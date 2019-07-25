@@ -1,38 +1,122 @@
 package beams
 
-import _root_.akka.actor._
+import java.io.{ByteArrayOutputStream, ObjectOutputStream}
+
+import _root_.akka.actor.typed._
+import _root_.akka.actor.typed.scaladsl.AskPattern._
+import _root_.akka.util._
+import _root_.akka.{actor => untyped}
 import beams.mtl._
 import cats._
 import cats.arrow.FunctionK
 import cats.data._
-import cats.effect.concurrent.Deferred
-import cats.effect.{ContextShift, IO, LiftIO}
+import cats.effect.{IO, LiftIO}
 import cats.implicits._
 import cats.mtl.ApplicativeAsk
-import _root_.akka.actor.typed.scaladsl.adapter._
+import cats.effect._
+import cats.effect.implicits._
+
+import scala.annotation.tailrec
+import scala.collection.mutable
+import scala.concurrent.{ExecutionContextExecutor, Future}
 
 package object akka {
-  type AkkaT[F[_], A] = ContT[ReaderT[F, LocalState, ?], Unit, A]
+  type AkkaT[F[_], A] = ContT[ReaderT[F, LocalStateUntyped, ?], Unit, A]
 
-  implicit def clusterForAkka[F[_] : Defer : FlatMap](
-                                                       implicit F: ApplicativeAsk[ReaderT[F, LocalState, ?], LocalState]
-                                                     ): Cluster[AkkaT[F, ?], ActorRef] = new Cluster[AkkaT[F, ?], ActorRef] {
-    override def nodes: AkkaT[F, NonEmptyList[ActorRef]] = ApplicativeAsk.readerFE[AkkaT[F, ?], LocalState] { n =>
+  type AkkaTF[F[_], A] = ContT[ReaderT[F, LocalState[F], ?], Unit, A]
+
+  def checkSerializable(a: Any): Unit = {
+    val bs = new ByteArrayOutputStream()
+    val oos = new ObjectOutputStream(bs)
+    oos.writeObject(a)
+    println(s"==== serializad $a size: ${bs.size()}")
+  }
+
+  implicit def beamForAkkaLocal[F[_] : Monad : Defer](
+                                                       implicit F: ApplicativeAsk[ReaderT[F, LocalStateUntyped, ?], LocalStateUntyped]
+                                                     ): Beam[AkkaT[F, ?], untyped.ActorRef] = new Beam[AkkaT[F, ?], untyped.ActorRef] {
+    override def beamTo(node: untyped.ActorRef): AkkaT[F, Unit] = ContT { cont =>
+
+      val payload = cont(())
+      checkSerializable(payload)
+
+      ().pure[ReaderT[F, LocalStateUntyped, ?]]
+    }
+
+    override def newIVar[A]: AkkaT[F, (AkkaT[F, A], A => AkkaT[F, Unit])] = ContT { cont =>
+      //TODO: создать новый актор.
+      ???
+    }
+
+    override def nodes: AkkaT[F, NonEmptyList[untyped.ActorRef]] = ApplicativeAsk.readerFE[AkkaT[F, ?], LocalStateUntyped] { n =>
       println(s"==== Nodes ${n.nodes}")
       n.nodes
     }
   }
 
-  implicit def beamForAkkaLocal[F[_] : Applicative]: Beam[AkkaT[F, ?], ActorRef] = new Beam[AkkaT[F, ?], ActorRef] {
-    override def beamTo(node: ActorRef): AkkaT[F, Unit] = ContT { cont =>
-      println(s"==== beam to $node")
-      ().pure[ReaderT[F, LocalState, ?]]
-    }
+  implicit def beamTFForAkkaLocal[F[_]](): BeamTF[AkkaTF[F, ?]] = new BeamTF[AkkaTF[F, ?]] {
+    override type Node = Worker.Ref[F]
+
+    override def beamTo(node: Node): AkkaTF[F, Unit] = ???
+
+    override def nodes: AkkaTF[F, NonEmptyList[Node]] = ???
   }
 
-  //def run[F[_], A](program: AkkaT[F, A], compiler: FunctionK[F, IO], executors: NonEmptyList[ActorRef]) = {
-   // ???
-  //}
+  def run_driver[F[_] : LiftIO, A](
+                                    program: AkkaTF[F, A],
+                                    driver: ActorRef[Driver.Message[F, A]]
+                                  )
+                                  (
+                                    implicit timeout: Timeout,
+                                    scheduler: Scheduler
+                                  ): F[A] = LiftIO[F].liftIO {
+    IO.fromFuture(IO {
+      driver ? { replyTo => Driver.Run[F, A](program, replyTo) }
+    })
+  }
+
+  def run_spawnp[F[_] : Monad : LiftIO, A](
+                                            program: AkkaTF[F, A],
+                                            compile: F ~> IO,
+                                            workerCount: Int
+                                          )
+                                          (
+                                            implicit timeout: Timeout,
+                                            actorSystem: ActorSystem[SpawnProtocol]
+                                          ): F[A] = {
+    implicit val scheduler: Scheduler = actorSystem.scheduler
+    implicit val executionContext: ExecutionContextExecutor = actorSystem.executionContext
+
+    def createWorkers(): NonEmptyList[Worker.Ref[F]] = {
+      if (workerCount == 0) throw new IllegalArgumentException("Worker count should be greater than zero")
+
+      def createWorker(): Future[ActorRef[Worker.Message[F]]] = actorSystem ? SpawnProtocol.Spawn(behavior = Worker(compile), name = "")
+
+      def addWorker(l: NonEmptyList[Worker.Ref[F]]): Future[NonEmptyList[Worker.Ref[F]]] = {
+        ???
+      }
+
+      val a = for {
+        worker <- createWorker()
+
+      } yield {
+        ???
+      }
+
+      ???
+    }
+
+    /*
+    for {
+      // TODO: инициализация воркеров должна быть безопасной.
+      // workers <-
+      result <- run_driver(program, ???)
+    } yield result
+
+     */
+    ???
+  }
+
 
   def run[F[_] : LiftIO : Monad, A](
                                      process: AkkaT[F, A],
@@ -40,15 +124,11 @@ package object akka {
                                      compiler: FunctionK[F, IO]
                                    )
                                    (
-                                     implicit actorSystem: ActorSystem,
-                                     contextShift: ContextShift[IO]
+                                     implicit actorSystem: untyped.ActorSystem,
+                                     // contextShift: ContextShift[IO]
                                    ): F[A] = LiftIO[F].liftIO(for {
-    dresult <- Deferred[IO, A]
+    // dresult <- Deferred[IO, A]
     actors <- IO {
-      val a = actorSystem.toTyped
-
-
-
       NonEmptyList.fromListUnsafe(List.fill(nodesCount)(actorSystem.actorOf(NodeActor.props(compiler))))
     }
     _ <- actors.traverse_ { actor =>
@@ -62,10 +142,10 @@ package object akka {
           LiftIO[F].liftIO(IO {
             println("=== в рот")
             ()
-          } *> dresult.complete(aaa))
+          } /* *> dresult.complete(aaa) */)
         }
       })
     }
-    result <- dresult.get
-  } yield result)
+    // result <- dresult.get
+  } yield ???)
 }

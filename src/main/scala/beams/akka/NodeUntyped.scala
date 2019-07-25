@@ -7,12 +7,12 @@ import cats.effect._
 
 sealed trait NodeMessage
 
-case class BeamMessage[F[_]](beam: ReaderT[F, LocalState, Unit])
+case class BeamMessage[F[_]](beam: ReaderT[F, LocalStateUntyped, Unit])
 
 case class DiscoverMessage(nodes: NonEmptyList[ActorRef])
 
 class NodeActor[F[_]](compiler: FunctionK[F, IO]) extends Actor with ActorLogging {
-  private var localState: LocalState = _
+  private var localState: LocalStateUntyped = _
 
   override def preStart(): Unit = log.info("NodeActor started")
 
@@ -28,7 +28,7 @@ class NodeActor[F[_]](compiler: FunctionK[F, IO]) extends Actor with ActorLoggin
 
   private def uninitialized: Receive = {
     case DiscoverMessage(nodes) =>
-      localState = LocalState(nodes)
+      localState = LocalStateUntyped(nodes)
       context.become(initialized)
   }
 

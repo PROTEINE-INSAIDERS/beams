@@ -27,6 +27,7 @@ scalacOptions ++= Seq(
 libraryDependencies ++= Seq(
   //"org.typelevel" %% "cats-core" % "2.0.0-SNAPSHOT",
   "org.typelevel" %% "cats-effect" % "2.0.0-M3",
+  "io.monix" %% "monix" % "3.0.0-RC3",
   "org.typelevel" %% "cats-mtl-core" % "0.6.0",
   "com.carrotsearch" % "hppc" % "0.8.1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
@@ -34,4 +35,7 @@ libraryDependencies ++= Seq(
   "com.github.mpilquist" %% "simulacrum" % "0.19.0")
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+
+resolvers += Resolver.sonatypeRepo("releases")
+
 addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.10.3")
