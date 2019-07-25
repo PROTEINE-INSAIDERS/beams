@@ -26,7 +26,7 @@ scalacOptions ++= Seq(
 
 libraryDependencies ++= Seq(
   //"org.typelevel" %% "cats-core" % "2.0.0-SNAPSHOT",
-  "org.typelevel" %% "cats-effect" % "2.0.0-M3",
+  "org.typelevel" %% "cats-effect" % "2.0.0-e01cd5f-SNAPSHOT",
   "io.monix" %% "monix" % "3.0.0-RC3",
   "org.typelevel" %% "cats-mtl-core" % "0.6.0",
   "com.carrotsearch" % "hppc" % "0.8.1",

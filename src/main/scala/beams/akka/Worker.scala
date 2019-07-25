@@ -20,7 +20,7 @@ object Worker {
 
   final case class Run[F[_], A](program: ReaderT[F, LocalState[F], Unit]) extends Message[F]
 
-  final case class Shutdown[F[_], A]() extends Message[F]
+  final case class Shutdown[F[_]]() extends Message[F]
 
   def apply[F[_], A](compile: F ~> IO): Behavior[Message[F]] = Behaviors.setup { context =>
     Behaviors.receiveMessagePartial {

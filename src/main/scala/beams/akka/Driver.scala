@@ -8,6 +8,7 @@ import cats.effect._
 import cats.implicits._
 
 object Driver {
+  type Ref[F[_], A] = ActorRef[Message[F, A]]
 
   sealed trait Message[F[_], +A]
 

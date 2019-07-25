@@ -14,6 +14,10 @@ trait Beam[F[_], Node] {
   def nodes: F[NonEmptyList[Node]]
 }
 
+object Beam {
+  def apply[F[_], N](implicit F: Beam[F, N]): Beam[F, N] = implicitly
+}
+
 trait BeamTF[F[_]] {
   type Node
 
@@ -22,6 +26,6 @@ trait BeamTF[F[_]] {
   def nodes: F[NonEmptyList[Node]]
 }
 
-object Beam {
-  def apply[F[_], N](implicit F: Beam[F, N]): Beam[F, N] = implicitly
+object BeamTF {
+  def apply[F[_]](implicit F: BeamTF[F]): BeamTF[F] = implicitly
 }

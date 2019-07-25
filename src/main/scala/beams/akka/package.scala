@@ -10,15 +10,12 @@ import beams.mtl._
 import cats._
 import cats.arrow.FunctionK
 import cats.data._
-import cats.effect.{IO, LiftIO}
+import cats.effect.{IO, LiftIO, _}
 import cats.implicits._
-import cats.mtl.ApplicativeAsk
-import cats.effect._
-import cats.effect.implicits._
+import cats.mtl._
 
-import scala.annotation.tailrec
-import scala.collection.mutable
 import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.util._
 
 package object akka {
   type AkkaT[F[_], A] = ContT[ReaderT[F, LocalStateUntyped, ?], Unit, A]
@@ -68,53 +65,62 @@ package object akka {
                                   )
                                   (
                                     implicit timeout: Timeout,
-                                    scheduler: Scheduler
+                                    scheduler: Scheduler,
+                                    contextShift: ContextShift[IO]
                                   ): F[A] = LiftIO[F].liftIO {
     IO.fromFuture(IO {
       driver ? { replyTo => Driver.Run[F, A](program, replyTo) }
     })
   }
 
-  def run_spawnp[F[_] : Monad : LiftIO, A](
-                                            program: AkkaTF[F, A],
-                                            compile: F ~> IO,
-                                            workerCount: Int
-                                          )
-                                          (
-                                            implicit timeout: Timeout,
-                                            actorSystem: ActorSystem[SpawnProtocol]
-                                          ): F[A] = {
+  //TODO: поднимать отдельные действия в базовую монаду, чтобы работал cancel, например.
+  //TODO: параметр timeout надо перенести в настройки и обозвать ask timeout.
+  // возможно следует создать специальную структуру с таймаутами, потому что таймаут для создания актора и таймаут для
+  // выоплнения программы может довольно сильно различаться.
+  // TODO: возможно contextShift следует брать из actorSystem (но это не точно).
+  def run_spawn[F[_] : Monad : LiftIO, A](
+                                           program: AkkaTF[F, A],
+                                           compiler: F ~> IO,
+                                           workerCount: Int
+                                         )
+                                         (
+                                           implicit timeout: Timeout,
+                                           actorSystem: ActorSystem[SpawnProtocol],
+                                           contextShift: ContextShift[IO]
+                                         ): F[A] = {
+    if (workerCount == 0) throw new IllegalArgumentException("Worker count should be greater than zero")
+
     implicit val scheduler: Scheduler = actorSystem.scheduler
     implicit val executionContext: ExecutionContextExecutor = actorSystem.executionContext
 
-    def createWorkers(): NonEmptyList[Worker.Ref[F]] = {
-      if (workerCount == 0) throw new IllegalArgumentException("Worker count should be greater than zero")
+    def createWorker(): Future[Worker.Ref[F]] = actorSystem ? SpawnProtocol.Spawn(behavior = Worker(compiler), name = "")
 
-      def createWorker(): Future[ActorRef[Worker.Message[F]]] = actorSystem ? SpawnProtocol.Spawn(behavior = Worker(compile), name = "")
-
-      def addWorker(l: NonEmptyList[Worker.Ref[F]]): Future[NonEmptyList[Worker.Ref[F]]] = {
-        ???
+    def addWorker(workers: NonEmptyList[Worker.Ref[F]]): Future[NonEmptyList[Worker.Ref[F]]] =
+      createWorker().transform {
+        case Success(value) => Success(value :: workers)
+        case Failure(exception) =>
+          workers.traverse_[Id, Unit](_ ! Worker.Shutdown[F]())
+          Failure(exception)
       }
 
-      val a = for {
-        worker <- createWorker()
-
-      } yield {
-        ???
+    def createWorkers: Future[NonEmptyList[Worker.Ref[F]]] = for {
+      head <- createWorker()
+      workers <- (workerCount - 1, NonEmptyList.one(head)).tailRecM { case (c, wx) =>
+        if (c == 0) {
+          Future.successful(Either.right[(Int, NonEmptyList[Worker.Ref[F]]), NonEmptyList[Worker.Ref[F]]](wx))
+        } else {
+          addWorker(wx).map(wxx => Either.left[(Int, NonEmptyList[Worker.Ref[F]]), NonEmptyList[Worker.Ref[F]]]((c - 1, wxx)))
+        }
       }
+    } yield workers
 
-      ???
-    }
+    def createDriver(nodes: NonEmptyList[Worker.Ref[F]]): Future[Driver.Ref[F, A]] =
+      actorSystem ? SpawnProtocol.Spawn(behavior = Driver[F, A](nodes), name = "")
 
-    /*
-    for {
-      // TODO: инициализация воркеров должна быть безопасной.
-      // workers <-
-      result <- run_driver(program, ???)
-    } yield result
-
-     */
-    ???
+    LiftIO[F].liftIO(for {
+      wokers <- IO.fromFuture(IO(createWorkers))
+      driver <- IO.fromFuture(IO(createDriver(wokers)))
+    } yield driver).flatMap(driver => run_driver(program, driver))
   }
 
 
