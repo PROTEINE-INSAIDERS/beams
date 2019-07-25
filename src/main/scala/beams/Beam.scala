@@ -18,7 +18,7 @@ object Beam {
   def apply[F[_], N](implicit F: Beam[F, N]): Beam[F, N] = implicitly
 }
 
-trait BeamTF[F[_]] {
+trait BeamTF[F[_]] extends Serializable {
   type Node
 
   def beamTo(node: Node): F[Unit]

@@ -2,6 +2,7 @@ package beams
 
 import java.io.{ByteArrayOutputStream, ObjectOutputStream}
 
+import _root_.akka.{pattern => untypedPattern}
 import _root_.akka.actor.typed._
 import _root_.akka.actor.typed.scaladsl.AskPattern._
 import _root_.akka.util._
@@ -18,17 +19,20 @@ import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.util._
 
 package object akka {
+  @deprecated("use AkkaBeam", "0.1")
   type AkkaT[F[_], A] = ContT[ReaderT[F, LocalStateUntyped, ?], Unit, A]
 
-  type AkkaTF[F[_], A] = ContT[ReaderT[F, LocalState[F], ?], Unit, A]
+  type AkkaBeam[F[_], A] = ContT[ReaderT[F, LocalState[F], ?], Unit, A]
 
   def checkSerializable(a: Any): Unit = {
     val bs = new ByteArrayOutputStream()
     val oos = new ObjectOutputStream(bs)
+    println(s"==== checking $a is serializable")
     oos.writeObject(a)
-    println(s"==== serializad $a size: ${bs.size()}")
+    println(s"==== $a serializad size: ${bs.size()}")
   }
 
+  @deprecated("use beamTFForAkkaLocal", "0.1")
   implicit def beamForAkkaLocal[F[_] : Monad : Defer](
                                                        implicit F: ApplicativeAsk[ReaderT[F, LocalStateUntyped, ?], LocalStateUntyped]
                                                      ): Beam[AkkaT[F, ?], untyped.ActorRef] = new Beam[AkkaT[F, ?], untyped.ActorRef] {
@@ -51,16 +55,18 @@ package object akka {
     }
   }
 
-  implicit def beamTFForAkkaLocal[F[_]](): BeamTF[AkkaTF[F, ?]] = new BeamTF[AkkaTF[F, ?]] {
+  implicit def beamTFForAkkaLocal[F[_] : Monad : Defer](
+                                                         implicit F: ApplicativeAsk[ReaderT[F, LocalState[F], ?], LocalState[F]]
+                                                       ): BeamTF[AkkaBeam[F, ?]] = new BeamTF[AkkaBeam[F, ?]] {
     override type Node = Worker.Ref[F]
 
-    override def beamTo(node: Node): AkkaTF[F, Unit] = ???
+    override def beamTo(node: Node): AkkaBeam[F, Unit] = ???
 
-    override def nodes: AkkaTF[F, NonEmptyList[Node]] = ???
+    override def nodes: AkkaBeam[F, NonEmptyList[Node]] = ApplicativeAsk.readerFE[AkkaBeam[F, ?], LocalState[F]] { state => state.nodes }
   }
 
   def run_driver[F[_] : LiftIO, A](
-                                    program: AkkaTF[F, A],
+                                    program: AkkaBeam[F, A],
                                     driver: ActorRef[Driver.Message[F, A]]
                                   )
                                   (
@@ -68,8 +74,14 @@ package object akka {
                                     scheduler: Scheduler,
                                     contextShift: ContextShift[IO]
                                   ): F[A] = LiftIO[F].liftIO {
+    checkSerializable(program)
+
     IO.fromFuture(IO {
-      driver ? { replyTo => Driver.Run[F, A](program, replyTo) }
+      driver ? { replyTo =>
+        println("==== is replyTo serializable?")
+        checkSerializable(replyTo )
+        Driver.Run[F, A](program, replyTo)
+      }
     })
   }
 
@@ -78,8 +90,9 @@ package object akka {
   // возможно следует создать специальную структуру с таймаутами, потому что таймаут для создания актора и таймаут для
   // выоплнения программы может довольно сильно различаться.
   // TODO: возможно contextShift следует брать из actorSystem (но это не точно).
+  // TODO: actorSystem не сериализуема, нужно чтобы она не попадала в лямбды.
   def run_spawn[F[_] : Monad : LiftIO, A](
-                                           program: AkkaTF[F, A],
+                                           program: AkkaBeam[F, A],
                                            compiler: F ~> IO,
                                            workerCount: Int
                                          )
@@ -124,6 +137,7 @@ package object akka {
   }
 
 
+  @deprecated("use run_spawn", "1.0")
   def run[F[_] : LiftIO : Monad, A](
                                      process: AkkaT[F, A],
                                      nodesCount: Int,

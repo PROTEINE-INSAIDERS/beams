@@ -12,7 +12,12 @@ object Driver {
 
   sealed trait Message[F[_], +A]
 
-  final case class Run[F[_], A](program: AkkaTF[F, A], replyTo: ActorRef[A]) extends Message[F, A]
+  final case class Run[F[_], A](program: AkkaBeam[F, A], replyTo: ActorRef[A]) extends Message[F, A] {
+    println("=== checking program")
+    checkSerializable(program)
+    println("=== checking replyTo actor")
+    checkSerializable(replyTo)
+  }
 
   final case class NodeInitialized[F[_]](node: Worker.Ref[F]) extends Message[F, Nothing]
 

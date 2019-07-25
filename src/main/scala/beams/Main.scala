@@ -32,10 +32,12 @@ object Main {
     implicit val timeout = Timeout(3.seconds)
     implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
 
-    val pp = programTF[AkkaTF[IO, ?], Int](Monad[AkkaTF[IO, ?]], beamTFForAkkaLocal[IO]())
+    val pp = programTF[AkkaBeam[Task, ?], Int]
 
-    run_spawn(pp, FunctionK.id[IO], 3)
-
+    val p = run_spawn(pp, λ[Task ~> IO](_.toIO), 3)
+    val result = p.runSyncUnsafe()
+    println(result)
+    system.terminate()
     /*
     implicit val actorSystem: ActorSystem = ActorSystem("hujpizda")
     // implicit val executionContext = actorSystem.dispatcher

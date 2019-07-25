@@ -11,7 +11,9 @@ import cats.data.{NonEmptyList, ReaderT}
 object Worker {
   type Ref[F[_]] = ActorRef[Message[F]]
 
-  sealed trait Message[F[_]]
+  sealed trait Message[F[_]] {
+    checkSerializable(this)
+  }
 
   final case class Initialize[F[_]](
                                      nodes: NonEmptyList[ActorRef[Worker.Message[F]]],
