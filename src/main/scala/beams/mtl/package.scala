@@ -2,8 +2,8 @@ package beams
 
 import cats._
 import cats.data._
-import cats.mtl._
 import cats.implicits._
+import cats.mtl._
 
 package object mtl {
   implicit def applicativeAskForContT[F[_] : Defer : FlatMap, R, E](

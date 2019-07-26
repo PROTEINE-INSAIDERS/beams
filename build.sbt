@@ -6,7 +6,7 @@ version := "0.1"
 
 scalaVersion := "2.12.8"
 
-val akkaVersion = "v2.6.0-M2"
+val akkaVersion = "2.6.0-M4"
 
 scalacOptions ++= Seq(
   "-encoding",
@@ -32,7 +32,8 @@ libraryDependencies ++= Seq(
   "com.carrotsearch" % "hppc" % "0.8.1",
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
-  "com.github.mpilquist" %% "simulacrum" % "0.19.0")
+  "com.github.mpilquist" %% "simulacrum" % "0.19.0",
+  "com.twitter" %% "chill-akka" % "0.9.3")
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 
