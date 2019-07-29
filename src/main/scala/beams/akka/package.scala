@@ -14,15 +14,15 @@ import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.util._
 
 package object akka {
-  type AkkaBeam[F[_], A] = ContT[ReaderT[F, Environment[F], ?], Unit, A]
+  type AkkaBeam[F[_], A] = ContT[ReaderT[F, AkkaEnv[F], ?], Unit, A]
 
   implicit def akkaBeam[F[_] : Monad : Defer : LiftIO](
-                                                        implicit F: ApplicativeAsk[ReaderT[F, Environment[F], ?], Environment[F]]
+                                                        implicit F: ApplicativeAsk[ReaderT[F, AkkaEnv[F], ?], AkkaEnv[F]]
                                                       ): Beam[AkkaBeam[F, ?]] = new Beam[AkkaBeam[F, ?]] {
     override type Node = Worker.Ref[F]
 
     @inline
-    private def continue[A](a: A)(f: (ReaderT[F, Environment[F], Unit], Environment[F]) => F[Unit]): AkkaBeam[F, A] =
+    private def continue[A](a: A)(f: (ReaderT[F, AkkaEnv[F], Unit], AkkaEnv[F]) => F[Unit]): AkkaBeam[F, A] =
       ContT { c =>
         Kleisli { state =>
           f(c(a), state)
@@ -42,10 +42,19 @@ package object akka {
     }
 
     override def nodes: AkkaBeam[F, NonEmptyList[Node]] =
-      ApplicativeAsk.readerFE[AkkaBeam[F, ?], Environment[F]] { state => state.nodes }
+      ApplicativeAsk.readerFE[AkkaBeam[F, ?], AkkaEnv[F]] { state => state.nodes }
   }
 
-
+  /**
+    * Мы тут фактически запускаем код драйвера в монаде программы.
+    * Это не нужно, т.к. пользователь не управляет кодом драйвера, с другой стороны, воркеры,
+    * на которых исполняется код программы, должны уметь предоставлять дополнительные сервисы,
+    * используя монаду программы.
+    *
+    * Единственный вопрос: следует ли абстрагироваться от контекста исполнения?
+    *
+    * Абстрагироваться можно через LiftIO, внутри которого будет создано IO-действие.
+    */
   def run_driver[F[_] : LiftIO, A](
                                     program: AkkaBeam[F, A],
                                     driver: ActorRef[Driver.Message[F, A]]
@@ -57,7 +66,8 @@ package object akka {
                                   ): F[A] = LiftIO[F].liftIO {
     IO.fromFuture(IO {
       driver ? { replyTo =>
-        Driver.Run[F, A](program, replyTo)
+        ???
+        //Driver.Run[F, A](program, replyTo)
       }
     })
   }
@@ -103,8 +113,8 @@ package object akka {
       }
     } yield workers
 
-    def createDriver(nodes: NonEmptyList[Worker.Ref[F]]): Future[Driver.Ref[F, A]] =
-      actorSystem ? SpawnProtocol.Spawn(behavior = Driver[F, A](nodes), name = "")
+    def createDriver(nodes: NonEmptyList[Worker.Ref[F]]): Future[Driver[F, A]#Ref] =
+      actorSystem ? SpawnProtocol.Spawn(behavior = Driver.apply_old[F, A](nodes), name = "")
 
     LiftIO[F].liftIO(for {
       wokers <- IO.fromFuture(IO(createWorkers))

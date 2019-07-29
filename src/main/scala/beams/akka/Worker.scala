@@ -18,7 +18,7 @@ object Worker {
                                      driver: ActorRef[Driver.Message[F, Nothing]]
                                    ) extends Message[F]
 
-  final case class Run[F[_], A](program: ReaderT[F, Environment[F], Unit]) extends Message[F]
+  final case class Run[F[_], A](program: ReaderT[F, AkkaEnv[F], Unit]) extends Message[F]
 
   final case class Shutdown[F[_]]() extends Message[F]
 
@@ -27,7 +27,7 @@ object Worker {
     Behaviors.receiveMessagePartial {
       case Initialize(nodes, driver) =>
         context.log.debug(s"Worker ${context.self} initialized (with ${nodes.size} peers).")
-        val state = Environment(context, nodes)
+        val state = AkkaEnv(context, nodes)
         driver ! Driver.NodeInitialized(context.self)
         Behaviors.receiveMessagePartial {
           case Run(program) =>

@@ -17,7 +17,7 @@ scalacOptions ++= Seq(
   "-language:implicitConversions",
   "-language:experimental.macros",
   "-unchecked",
-  "-Ywarn-dead-code",
+  // "-Ywarn-dead-code",
   "-Ywarn-numeric-widen",
   "-Ywarn-value-discard",
   "-Xfatal-warnings",
@@ -30,8 +30,9 @@ libraryDependencies ++= Seq(
   "io.monix" %% "monix" % "3.0.0-RC3",
   "org.typelevel" %% "cats-mtl-core" % "0.6.0",
   "com.carrotsearch" % "hppc" % "0.8.1",
-  "com.typesafe.akka" %% "akka-actor" % akkaVersion,
+  // "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
+  "com.typesafe.akka" %% "akka-persistence-typed" % akkaVersion,
   "com.github.mpilquist" %% "simulacrum" % "0.19.0",
   "com.twitter" %% "chill-akka" % "0.9.3")
 
