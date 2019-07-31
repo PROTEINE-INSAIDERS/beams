@@ -76,6 +76,7 @@ object Driver {
   }
 
   private final case class DriverImpl[F[_], A](private val dummy: Boolean = true) extends AnyVal {
+
     private def guard(f: ActorContext[Message[F, A]] => Behaviors.Receive[Message[F, A]]): Behavior[Message[F, A]] =
       Behaviors.setup { context =>
         f(context).receiveSignal { case (context, PostStop) =>
@@ -95,13 +96,14 @@ object Driver {
       }
     }
 
-    private def initializing(workers: NonEmptyList[Worker.Ref[F]], pending: Set[Worker.Ref[F]]): Behavior[Message[F, A]] = guard(
-      Behaviors.setup { context =>
-        Behaviors.receiveMessagePartial[Message[F, A]] {
-          case _ =>
-            Behaviors.same
-        }
-      })
+    private def initializing(workers: NonEmptyList[Worker.Ref[F]], pending: Set[Worker.Ref[F]]): Behavior[Message[F, A]] = guard { context =>
+      // if (pending.empty)
+
+      Behaviors.receiveMessagePartial[Message[F, A]] {
+        case _ =>
+          Behaviors.same
+      }
+    }
 
     private def shuttingDown(workers: List[Worker.Ref[F]]): Behavior[Message[F, A]] = Behaviors.setup { context =>
       context.log.debug(s"Shutting down driver ${context.self}")
