@@ -32,6 +32,7 @@ object Driver {
     */
   private final case class Shutdown[F[_]]() extends Message[F, Nothing]
 
+  @deprecated
   private[akka] def apply_old[F[_] : LiftIO, A](nodes: NonEmptyList[Worker.Ref[F]]): Behavior[Message[F, A]] = Behaviors.setup { context =>
     context.log.debug(s"Driver ${context.self} started.")
     Behaviors.receiveMessagePartial[Message[F, A]] {
@@ -62,6 +63,7 @@ object Driver {
     }
   }
 
+  @deprecated
   private def addFinalizer[A, F[_] : LiftIO](
                                               program: AkkaBeam[F, A],
                                               nodes: NonEmptyList[Worker.Ref[F]],
@@ -86,30 +88,40 @@ object Driver {
       }
 
     private def uninitialized: Behavior[Message[F, A]] = guard { context =>
-      context.log.debug(s"Driver ${context.self} has started.")
+      context.log.debug(s"Driver ${context.self}  started.")
       Behaviors.receiveMessagePartial[Message[F, A]] {
         case Initialize(workers) =>
-          workers.traverse_(_.tell(Worker.Initialize(workers, context.self)).pure[Id])
-          initializing(workers, workers.toList.toSet)
+          initialize(workers)
         case Shutdown() =>
           shuttingDown(List.empty)
       }
     }
 
-    private def initializing(workers: NonEmptyList[Worker.Ref[F]], pending: Set[Worker.Ref[F]]): Behavior[Message[F, A]] = guard { context =>
-      // if (pending.empty)
-
-      Behaviors.receiveMessagePartial[Message[F, A]] {
-        case _ =>
-          Behaviors.same
-      }
+    private def initialize(workers: NonEmptyList[Worker.Ref[F]]): Behavior[Message[F, A]] = Behaviors.setup { context =>
+      context.log.debug(s"Initializing driver ${context.self}.")
+      workers.traverse_(_.tell(Worker.Initialize(workers, context.self)).pure[Id])
+      initializing(workers, workers.toList.toSet)
     }
+
+    private def initializing(workers: NonEmptyList[Worker.Ref[F]], pending: Set[Worker.Ref[F]]): Behavior[Message[F, A]] =
+      if (pending.isEmpty) {
+        initialized()
+      } else guard { _ =>
+        Behaviors.receiveMessagePartial {
+          case NodeInitialized(node) =>
+            initializing(workers, pending - node)
+          case Shutdown() =>
+            shuttingDown(workers.toList) // send shutdown message to all workers, even it has not been initialized.
+        }
+      }
+
+    private def initialized(): Behavior[Message[F, A]] = ???
 
     private def shuttingDown(workers: List[Worker.Ref[F]]): Behavior[Message[F, A]] = Behaviors.setup { context =>
       context.log.debug(s"Shutting down driver ${context.self}")
-      if (workers.isEmpty) {
-        ???
-      }
+      //  if (workers.isEmpty) {
+      ???
+      //  }
     }
 
     def behaviour: Behavior[Message[F, A]] = uninitialized
