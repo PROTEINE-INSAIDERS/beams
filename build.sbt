@@ -34,6 +34,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
   "com.typesafe.akka" %% "akka-persistence-typed" % akkaVersion,
   "com.github.mpilquist" %% "simulacrum" % "0.19.0",
+  "org.scalaz" %% "scalaz-zio" % "1.0-RC5",
+  "org.scalaz" %% "scalaz-zio-interop-cats" % "1.0-RC5",
   "com.twitter" %% "chill-akka" % "0.9.3")
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)

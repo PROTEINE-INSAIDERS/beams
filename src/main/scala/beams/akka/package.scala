@@ -57,7 +57,7 @@ package object akka {
     */
   def run_driver[F[_] : LiftIO, A](
                                     program: AkkaBeam[F, A],
-                                    driver: ActorRef[Driver.Message[F, A]]
+                                    driver: ActorRef[AkkaDriver.Message[F, A]]
                                   )
                                   (
                                     implicit timeout: Timeout,
@@ -77,6 +77,7 @@ package object akka {
   // возможно следует создать специальную структуру с таймаутами, потому что таймаут для создания актора и таймаут для
   // выоплнения программы может довольно сильно различаться.
   // TODO: возможно contextShift следует брать из actorSystem (но это не точно).
+  @deprecated("deprecated", "1.0")
   def run_spawn[F[_] : Monad : LiftIO, A](
                                            program: AkkaBeam[F, A],
                                            compiler: F ~> IO,
@@ -113,8 +114,8 @@ package object akka {
       }
     } yield workers
 
-    def createDriver(nodes: NonEmptyList[Worker.Ref[F]]): Future[Driver[F, A]#Ref] =
-      actorSystem ? SpawnProtocol.Spawn(behavior = Driver.apply_old[F, A](nodes), name = "")
+    def createDriver(nodes: NonEmptyList[Worker.Ref[F]]): Future[AkkaDriver.Ref[F, A]] =
+      actorSystem ? SpawnProtocol.Spawn(behavior = AkkaDriver.apply_old[F, A](nodes), name = "")
 
     LiftIO[F].liftIO(for {
       wokers <- IO.fromFuture(IO(createWorkers))

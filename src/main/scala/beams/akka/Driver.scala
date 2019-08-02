@@ -7,7 +7,7 @@ import cats.data._
 import cats.effect._
 import cats.implicits._
 
-object Driver {
+object AkkaDriver {
   type Ref[F[_], A] = ActorRef[Message[F, A]]
 
   private[akka] sealed trait Message[F[_], +A] extends BeamsMessage
@@ -32,7 +32,7 @@ object Driver {
     */
   private final case class Shutdown[F[_]]() extends Message[F, Nothing]
 
-  @deprecated
+  @deprecated("Use DriverImpl", "0.1")
   private[akka] def apply_old[F[_] : LiftIO, A](nodes: NonEmptyList[Worker.Ref[F]]): Behavior[Message[F, A]] = Behaviors.setup { context =>
     context.log.debug(s"Driver ${context.self} started.")
     Behaviors.receiveMessagePartial[Message[F, A]] {
@@ -63,7 +63,7 @@ object Driver {
     }
   }
 
-  @deprecated
+  @deprecated("Use DriverImpl", "0.1")
   private def addFinalizer[A, F[_] : LiftIO](
                                               program: AkkaBeam[F, A],
                                               nodes: NonEmptyList[Worker.Ref[F]],
