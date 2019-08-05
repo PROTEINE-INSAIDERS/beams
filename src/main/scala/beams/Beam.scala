@@ -1,15 +1,17 @@
 package beams
 
-import cats.data.NonEmptyList
+import scalaz.zio._
 
-trait Beam[F[_]] extends Serializable {
-  type Node
-
-  def beamTo(node: Node): F[Unit]
-
-  def nodes: F[NonEmptyList[Node]]
+trait Beam[Node[_], Env] {
+  def beam: Beam.Service[Node, Env]
 }
 
 object Beam {
-  def apply[F[_]](implicit F: Beam[F]): Beam[F] = implicitly
+  trait Service[Node[_], Env] {
+    def forkTo[R, A](node: Node[R])(task: TaskR[Beam[Node, R], A]): Task[Fiber[Throwable, A]]
+
+    def self: Node[Env]
+
+    def spawn[R](a: R): Task[Node[R]]
+  }
 }
