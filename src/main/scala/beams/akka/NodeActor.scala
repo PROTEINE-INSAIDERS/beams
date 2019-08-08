@@ -6,19 +6,22 @@ import beams._
 import scalaz.zio._
 
 object NodeActor {
-  type Ref = ActorRef[Message]
+  type Ref = ActorRef[Command]
 
-  sealed trait Message
+  sealed trait Command
 
-  final case class RunTask(task: TaskR[Beam[AkkaNode, Any], Any], replyTo: ActorRef[TaskFinished]) extends Message
+  final case class RunTask(task: TaskR[Beam[AkkaNode, Any], Any], replyTo: ActorRef[TaskFinished]) extends Command
 
-  final case class TaskFinished(exit: Exit[Throwable, Any]) extends Message
+  final case class TaskFinished(exit: Exit[Throwable, Any]) extends Command
 
-  def apply[Env](env: Env): Behavior[Message] = Behaviors.setup { _ =>
+  object Stop extends Command
+
+  def apply[Env](env: Env): Behavior[Command] = Behaviors.setup { context =>
     val runtime = new DefaultRuntime {}
+    val node = AkkaNode(env, context.self)
     Behaviors.receiveMessagePartial {
       case RunTask(task, replyTo) =>
-        val beam = AkkaBeam[Env]()
+        val beam = AkkaBeam[Env](node)
         val program = task.asInstanceOf[TaskR[Beam[AkkaNode, Env], Any]].provide(beam)
         val result = runtime.unsafeRunSync(program)
         replyTo ! TaskFinished(result)

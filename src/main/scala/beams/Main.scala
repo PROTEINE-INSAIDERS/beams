@@ -1,9 +1,13 @@
 package beams
 
-
 import beams.akka._
+import beams.akka.local._
 import scalaz.zio.ZIO._
 import scalaz.zio._
+import _root_.akka.actor.typed._
+import _root_.akka.actor.typed.scaladsl.AskPattern._
+import _root_.akka.util.Timeout
+import scala.concurrent.duration._
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -25,10 +29,15 @@ object Main {
       r2 <- f2.join
     } yield ()
 
-    //val rt = new LocalBeam[Any](LocalNode(()))
-    //val localProgram = program.provide(rt)
-    //val runtime = new DefaultRuntime {}
-    //val res = runtime.unsafeRun(localProgram)
-    //println(res)
+    println(Map(1 -> "крокодил", 2 -> "сыр"))
+
+    val system: ActorSystem[SpawnProtocol.Command] = createActorSystem("test")
+    implicit val timeout: Timeout = Timeout(3.seconds)
+    implicit val scheduler: Scheduler = system.scheduler
+
+    val a = system.ask[ActorRef[NodeActor.Ref]](replyTo => SpawnProtocol.Spawn(???, ???, ???, replyTo) )
+
+    io.StdIn.readLine()
+    system.terminate()
   }
 }
