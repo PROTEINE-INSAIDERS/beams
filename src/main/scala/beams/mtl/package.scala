@@ -1,5 +1,5 @@
 package beams
-
+/*
 import cats._
 import cats.data._
 import cats.implicits._
@@ -17,3 +17,4 @@ package object mtl {
       override def reader[A](f: E => A): ContT[F, R, A] = ask.map(f)
     }
 }
+*/
