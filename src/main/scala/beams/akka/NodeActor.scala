@@ -11,26 +11,32 @@ object NodeActor {
 
   sealed trait Command extends AkkaMessage
 
-  final case class CreateNode(env: Any) extends Command
+  final case class CreateNode(env: Any, replyTo: ActorRef[Ref]) extends Command
 
-  final case class RunTask(task: TaskR[Beam[AkkaNode, Any], Any], replyTo: ActorRef[TaskFinished]) extends Command
+  final case class RunTask(
+                            task: TaskR[Beam[AkkaNode, Any], Any],
+                            replyTo: ActorRef[Exit[Throwable, Any]],
+                            timeout: MigratableTimeout
+                          ) extends Command
 
-  final case class TaskFinished(exit: Exit[Throwable, Any]) extends Command
+  //TODO: сразу Exit слать?
+  // final case class TaskFinished(exit: Exit[Throwable, Any]) extends AkkaMessage
 
   object Stop extends Command
 
-  def apply[Env](env: Env): Behavior[Command] = Behaviors.setup { ctx =>
-    val runtime = new DefaultRuntime {}
-    Behaviors.receiveMessagePartial {
-      case CreateNode(env) =>
-        val a = ctx.spawn(NodeActor(env), "")
-        ???
+  def apply[Env](env: Env): Behavior[Command] = NodeActor(env, new DefaultRuntime {})
 
-      case RunTask(task, replyTo) =>
-        val beam = AkkaBeam[Env](ctx.self, env)
+  private def apply[Env](env: Env, runtime: DefaultRuntime): Behavior[Command] = Behaviors.setup { ctx =>
+    val self = AkkaNode[Env](ctx.self)
+    Behaviors.receiveMessagePartial {
+      case RunTask(task, replyTo, timeout) =>
+        val beam = AkkaBeam[Env](self, env, timeout.local(), ctx.system.scheduler)
         val program = task.asInstanceOf[TaskR[Beam[AkkaNode, Env], Any]].provide(beam)
-        val result = runtime.unsafeRunSync(program)
-        replyTo ! TaskFinished(result)
+        runtime.unsafeRunAsync(program)(result => replyTo ! result)
+        Behaviors.same
+
+      case CreateNode(env, replyTo) =>
+        replyTo ! ctx.spawnAnonymous(NodeActor(env, runtime), Props.empty)
         Behaviors.same
 
       case Stop =>

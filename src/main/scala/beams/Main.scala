@@ -14,27 +14,32 @@ import scala.concurrent.duration._
 object Main {
   def main(args: Array[String]): Unit = {
 
-    //TODO: глобальный таймаут
-    // он должен задаваться при запуске программы (возможно, параметр startTime и параметр endTime, все остальные
-    // тамйауты должны вычисляться исходя из этих двух параметров)
-    def program: ZIO[Beam[AkkaNode, Any], Throwable, Unit] = for {
-      n1 <- createNode("str1")
-      n2 <- createNode(10)
-      f1 <- forkTo(n1) {
-        for {
-          s <- self[String]
-          n3 <- createNode(true)
-        } yield ()
-        effectTotal(println("")).andThen(succeed(10))
-      }
-      f2 <- forkTo[Int, Unit](n2) {
-        accessM { env => effectTotal(println(env)) }
-      }
-      r1 <- f1.join
-      r2 <- f2.join
-    } yield ()
+    def program[N[+_]]: ZIO[Beam[N, Any], Throwable, Int] = {
+      val syntax = new BeamSyntax[N] {}
+      import syntax._
 
-    println(Map(1 -> "крокодил", 2 -> "сыр"))
+      for {
+        n1 <- createNode("str1")
+        n2 <- createNode(10)
+        /*
+        f1 <- forkTo(n1) {
+          for {
+            s <- self[String]
+            n3 <- createNode(true)
+          } yield ()
+          effectTotal(println("")).andThen(succeed(1))
+        }
+        f2 <- forkTo(n2) {
+          for {
+            r <- env[Int]
+          } yield r
+        }
+        r1 <- f1.join
+        r2 <- f2.join
+
+         */
+      } yield 10
+    }
 
     val system: ActorSystem[SpawnProtocol.Command] = createActorSystem("test")
     implicit val timeout: Timeout = Timeout(3.seconds)
@@ -46,19 +51,12 @@ object Main {
 
     val a = for {
       root <- rootFuture
-      result <- root.ask[NodeActor.TaskFinished](replyTo => NodeActor.RunTask(program, replyTo))
+      result <- root.ask[Exit[Throwable, Any]](replyTo => NodeActor.RunTask(program, replyTo, FixedTimeout(20 seconds)))
     } yield result
-
 
     val r = Await.result(a, 10 seconds)
     println(r)
 
-    /*
-
-    a.onSuccess { case ref: ActorRef[NodeActor.Ref] =>
-      ref.ask[TaskFinished](replyTo => NodeActor.RunTask(program, replyTo) )
-    }
-     */
     // io.StdIn.readLine()
     system.terminate()
   }
