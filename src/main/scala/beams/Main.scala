@@ -21,7 +21,6 @@ object Main {
       for {
         n1 <- createNode("str1")
         n2 <- createNode(10)
-        /*
         f1 <- forkTo(n1) {
           for {
             s <- self[String]
@@ -36,9 +35,7 @@ object Main {
         }
         r1 <- f1.join
         r2 <- f2.join
-
-         */
-      } yield 10
+      } yield r1 + r2
     }
 
     val system: ActorSystem[SpawnProtocol.Command] = createActorSystem("test")

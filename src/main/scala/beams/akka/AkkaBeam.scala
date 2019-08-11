@@ -20,33 +20,15 @@ object AkkaBeam {
                                   scheduler: Scheduler
                                 ) extends Beam.Service[AkkaNode, Env] {
     override def forkTo[R, A](node: AkkaNode[R])
-                             (task: TaskR[Beam[AkkaNode, R], A]): Task[Fiber[Throwable, A]] = {
-
-      val fiber = Fiber.fromFuture {
-        implicit val t: Timeout = timeout.current()
-        implicit val s: Scheduler = scheduler
-
-        val aaa = node.ref.ask[Exit[Throwable, Any]](NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Any], Any]], _, timeout.migratable()))
-        aaa
-      }
-
-      val ttt = Task.fromFiber(fiber)
-      
-    ???
-    }
-
-
-    /*
-    Task.effectTotal {
-
-    Fiber.fromFuture {
+                             (task: TaskR[Beam[AkkaNode, R], A]): Task[Fiber[Throwable, A]] = Task.fromFuture { implicit ctx =>
       implicit val t: Timeout = timeout.current()
       implicit val s: Scheduler = scheduler
-      node.ref.ask[Exit[Throwable, A]](???)
-    }
-  }
 
-     */
+      node.ref
+        .ask[Exit[Throwable, Any]](NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Any], Any]], _, timeout.migratable()))
+    }
+      .flatMap(exit => Task.done(exit.asInstanceOf[Exit[Throwable, A]]))
+      .fork
 
     override def createNode[R](a: R): Task[AkkaNode[R]] = Task.fromFuture { implicit ctx =>
       implicit val t: Timeout = timeout.current()
