@@ -19,9 +19,6 @@ object NodeActor {
                             timeout: MigratableTimeout
                           ) extends Command
 
-  //TODO: сразу Exit слать?
-  // final case class TaskFinished(exit: Exit[Throwable, Any]) extends AkkaMessage
-
   object Stop extends Command
 
   def apply[Env](env: Env): Behavior[Command] = NodeActor(env, new DefaultRuntime {})
