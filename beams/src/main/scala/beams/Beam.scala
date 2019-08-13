@@ -12,9 +12,9 @@ object Beam {
 
     def self: Node[Env]
 
-    def createNode[R](a: R): Task[Node[R]]
+    def createNode[R](r: R): Task[Node[R]]
 
-    def releaseNode[R](node: Node[R]): Task[Unit]
+    def releaseNode[R](node: Node[R]): Canceler
 
     def env: Env
   }
@@ -28,7 +28,10 @@ trait BeamSyntax[Node[+_]] {
 
   def createNode[R](r: R): TaskR[Beam[Node, Any], Node[R]] = ZIO.accessM(_.beam.createNode(r))
 
-  def releaseNode[R](node: Node[R]): TaskR[Beam[Node, Any], Unit] = ZIO.accessM(_.beam.releaseNode(node))
+  def releaseNode[R](node: Node[R]): TaskR[Beam[Node, Any], _] = ZIO.accessM(_.beam.releaseNode(node))
 
   def env[Env]: TaskR[Beam[Node, Env], Env] = ZIO.access(_.beam.env)
+
+  def node[R](r: R): TaskR[Beam[Node, Any], Managed[Throwable, Node[R]]] = ZIO.access(F =>
+    Managed.make(F.beam.createNode(r))(F.beam.releaseNode[R]))
 }

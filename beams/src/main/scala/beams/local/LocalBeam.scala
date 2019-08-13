@@ -16,7 +16,7 @@ object LocalBeam {
 
     override def createNode[A](a: A): Task[LocalNode[A]] = Task(LocalNode(a))
 
-    override def releaseNode[R](node: LocalNode[R]): Task[Unit] = Task.unit
+    override def releaseNode[R](node: LocalNode[R]): Canceler = ZIO.unit
 
     override def env: Env = self.env
   }

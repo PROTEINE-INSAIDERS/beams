@@ -34,7 +34,7 @@ object AkkaBeam {
       self.ref.ask[NodeActor.Ref](NodeActor.CreateNode(a, _))
     }.map(AkkaNode[R])
 
-    override def releaseNode[R](node: AkkaNode[R]): Task[Unit] = Task(node.ref.tell(NodeActor.Stop))
+    override def releaseNode[R](node: AkkaNode[R]): Canceler = ZIO.effectTotal(node.ref.tell(NodeActor.Stop))
   }
 
 }
