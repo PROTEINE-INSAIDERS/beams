@@ -1,51 +1,60 @@
 package beams
 
 import _root_.akka.actor.typed._
-import _root_.akka.util._
+import _root_.akka.actor.typed.scaladsl.AskPattern._
+import _root_.akka.util.Timeout
 import beams.akka._
-import cats._
-import cats.effect._
-import cats.effect.implicits._
-import cats.implicits._
-import cats.mtl.implicits._
-import monix.eval.Task
-import monix.execution.Scheduler.Implicits.global
+import beams.akka.local._
+import scalaz.zio.ZIO._
+import scalaz.zio._
 
-import scala.concurrent._
+import scala.concurrent.{Await, ExecutionContext}
 import scala.concurrent.duration._
 
 object Main {
-
-  def program[F[_] : Monad, A](implicit F: Beam[F]): F[Int] = for {
-    nodes <- F.nodes
-    _ <- F.beamTo(nodes.head)
-  } yield nodes.size
-
- // def programTF[F[_] : Monad, A](implicit F: BeamTF[F]): F[Int] = 0.pure[F]
-
   def main(args: Array[String]): Unit = {
-    implicit val system = ActorSystem(SpawnProtocol.behavior, "hujpizda")
-    implicit val timeout = Timeout(3.seconds)
-    implicit val contextShift: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
 
-    val pp = program[AkkaBeam[Task, ?], Int]
+    def program[N[+_]]: ZIO[Beam[N, Any], Throwable, Int] = {
+      val syntax = new BeamSyntax[N] {}
+      import syntax._
 
-    val p = run_spawn(pp, λ[Task ~> IO](_.toIO), 3)
-    val res = p.runSyncUnsafe()
-    println(res)
+      for {
+        n1 <- createNode("str1")
+        n2 <- createNode(10)
+        f1 <- forkTo(n1) {
+          for {
+            s <- self[String]
+            n3 <- createNode(true)
+          } yield ()
+          effectTotal(println("")).andThen(succeed(1))
+        }
+        f2 <- forkTo(n2) {
+          for {
+            r <- env[Int]
+          } yield r
+        }
+        r1 <- f1.join
+        r2 <- f2.join
+      } yield r1 + r2
+    }
+
+    val system: ActorSystem[SpawnProtocol.Command] = createActorSystem("test")
+    implicit val timeout: Timeout = Timeout(3.seconds)
+    implicit val scheduler: Scheduler = system.scheduler
+
+    val rootFuture = system.ask[NodeActor.Ref](SpawnProtocol.Spawn(NodeActor(()), "", Props.empty, _))
+
+    implicit val ec = ExecutionContext.global
+
+    val a = for {
+      root <- rootFuture
+      result <- root.ask[Exit[Throwable, Any]](replyTo => NodeActor.RunTask(program, replyTo, FixedTimeout(20 seconds)))
+    } yield result
+
+    val r = Await.result(a, 10 seconds)
+    println(r)
+
+    // io.StdIn.readLine()
     system.terminate()
-    /*
-    implicit val actorSystem: ActorSystem = ActorSystem("hujpizda")
-    // implicit val executionContext = actorSystem.dispatcher
-    implicit val contextShift: ContextShift[IO] = IO.contextShift(actorSystem.dispatcher)
-
-   // val io = run[IO, NonEmptyList[ActorRef]](pp, 3, FunctionK.id[IO])
-
-  //  println(io.unsafeRunSync())
-
-   // println("terminating actor system...")
-  //  actorSystem.terminate().onComplete(a => println(a))
-     */
-    ()
   }
 }

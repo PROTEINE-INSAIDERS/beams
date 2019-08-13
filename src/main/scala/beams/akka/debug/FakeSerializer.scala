@@ -24,7 +24,7 @@ class FakeSerializer(val system: ExtendedActorSystem) extends BaseSerializer {
 
   override def fromBinary(bytes: Array[Byte], manifest: Option[Class[_]]): AnyRef = synchronized {
     var key = 0
-    for (i <- 0 to BYTES - 1) {
+    for (i <- 0 until BYTES) {
       key = key << 8
       key = key | (bytes(i) & 0xFF)
     }
