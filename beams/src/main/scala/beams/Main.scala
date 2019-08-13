@@ -27,8 +27,7 @@ object Main {
               for {
                 s <- self[String]
                 n3 <- createNode(true)
-              } yield ()
-              effectTotal(println("")).andThen(succeed(1))
+              } yield 1
             }
             f2 <- forkTo(n2) {
               for {
