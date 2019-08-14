@@ -23,7 +23,8 @@ lazy val commonScalacOptions = Seq(
 
 lazy val commonSettings = Seq(
   scalaVersion := "2.12.8",
-  scalacOptions ++= commonScalacOptions
+  scalacOptions ++= commonScalacOptions,
+  licenses += ("BSD-3-Clause", url("http://opensource.org/licenses/BSD-3-Clause"))
 )
 
 lazy val beams = (project in file("beams")).settings(
