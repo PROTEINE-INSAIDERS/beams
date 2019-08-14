@@ -15,7 +15,7 @@ object Main {
   def main(args: Array[String]): Unit = {
 
     def program[N[+ _]]: ZIO[Beam[N, Any], Throwable, Int] = {
-      val syntax = new BeamSyntax[N] {}
+      val syntax = BeamSyntax[N]()
       import syntax._
 
       for {
@@ -41,20 +41,10 @@ object Main {
       } yield result
     }
 
-    val system: ActorSystem[SpawnProtocol.Command] = createActorSystem("test")
-    implicit val timeout: Timeout = Timeout(3.seconds)
-    implicit val scheduler: Scheduler = system.scheduler
-
-    val rootFuture = system.ask[NodeActor.Ref](SpawnProtocol.Spawn(NodeActor(()), "", Props.empty, _))
-
-    implicit val ec = ExecutionContext.global
-
-    val a = for {
-      root <- rootFuture
-      result <- root.ask[Exit[Throwable, Any]](replyTo => NodeActor.RunTask(program, replyTo, FixedTimeout(20 seconds)))
-    } yield result
-
-    val r = Await.result(a, 10 seconds)
+    val system = createActorSystem("test")
+    val runtime = new DefaultRuntime {}
+    val io = beam(program, system, FixedTimeout(20 seconds))
+    val r = runtime.unsafeRunSync(io)
     println(r)
     system.terminate()
   }
