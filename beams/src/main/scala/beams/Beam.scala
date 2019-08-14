@@ -2,12 +2,13 @@ package beams
 
 import scalaz.zio._
 
-trait Beam[Node[+_], +Env] {
+trait Beam[Node[+ _], +Env] {
   def beam: Beam.Service[Node, Env]
 }
 
 object Beam {
-  trait Service[Node[+_], +Env] {
+
+  trait Service[Node[+ _], +Env] {
     def forkTo[R, A](node: Node[R])(task: TaskR[Beam[Node, R], A]): Task[Fiber[Throwable, A]]
 
     def self: Node[Env]
@@ -18,9 +19,10 @@ object Beam {
 
     def env: Env
   }
+
 }
 
-trait BeamSyntax[Node[+_]] {
+trait BeamSyntax[Node[+ _]] {
   def forkTo[R, A](node: Node[R])(task: TaskR[Beam[Node, R], A]): TaskR[Beam[Node, Any], Fiber[Throwable, A]] =
     ZIO.accessM(_.beam.forkTo(node)(task))
 
@@ -34,4 +36,8 @@ trait BeamSyntax[Node[+_]] {
 
   def node[R](r: R): TaskR[Beam[Node, Any], Managed[Throwable, Node[R]]] = ZIO.access(F =>
     Managed.make(F.beam.createNode(r))(F.beam.releaseNode[R]))
+}
+
+object BeamSyntax {
+  def apply[Node[+ _]](): BeamSyntax[Node] = new BeamSyntax[Node]() {}
 }
