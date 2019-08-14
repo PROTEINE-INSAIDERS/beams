@@ -2,16 +2,21 @@ import beams._
 import beams.akka.FixedTimeout
 import beams.akka.local.{beam, createActorSystem}
 import scalaz.zio._
-import scala.concurrent.duration._
 
 import scala.collection._
+import scala.concurrent.duration._
 
+/**
+  * Please note that the sole purpose of this example is to demonstrate how distributed programming patterns
+  * could be implemented using the Beams library. This example should not be considered as a "best practice"
+  * for a real map-reduce implementations and does not meant to be used in any real applications.
+  */
 object Main {
 
-  trait Source[K, V] {
+  trait Source[V] {
     def numPartitions: Int
 
-    def partition(n: Int): Iterable[(K, V)]
+    def partition(n: Int): Iterable[V]
   }
 
   private def shrunk(hash: Int, bound: Int): Int = {
@@ -28,17 +33,17 @@ object Main {
     data
   }
 
-  def mapReduce[N[+ _], K1, V1, K2, V2](
-                                         source: Source[K1, V1],
-                                         map: (K1, V1) => Iterable[(K2, V2)],
-                                         reduce: (V2, V2) => V2
-                                       ): ZIO[Beam[N, Any], Throwable, Iterable[(K2, V2)]] = {
+  def mapReduce[N[+ _], V1, K2, V2](
+                                     source: Source[V1],
+                                     map: V1 => Iterable[(K2, V2)],
+                                     reduce: (V2, V2) => V2
+                                   ): ZIO[Beam[N, Any], Throwable, Iterable[(K2, V2)]] = {
     val syntax = BeamSyntax[N]()
     import syntax._
-    val capacity = math.min(java.lang.Runtime.getRuntime.availableProcessors(), source.numPartitions)
+    val reducersNum = math.min(java.lang.Runtime.getRuntime.availableProcessors(), source.numPartitions)
     for {
-      mappers <- ZIO.foreach(0 until capacity)(node)
-      reducers <- ZIO.foreach(0 until capacity)(_ => Ref.make(mutable.Map.empty[K2, V2]) >>= node)
+      mappers <- ZIO.foreach(0 until source.numPartitions)(node)
+      reducers <- ZIO.foreach(0 until reducersNum)(_ => Ref.make(mutable.Map.empty[K2, V2]) >>= node)
       result <- (Managed.collectAll(mappers) <*> Managed.collectAll(reducers)).use {
         case (mappers, reducerList) => for {
           reducers <- ZIO.succeed(reducerList.toVector)
@@ -47,8 +52,8 @@ object Main {
               for {
                 partitionNo <- env[Int]
                 partitionedData <- IO {
-                  addReduced(new mutable.HashMap[K2, V2], reduce, source.partition(partitionNo).flatMap { case (k, v) => map(k, v) })
-                    .groupBy { case (k, _) => shrunk(k.hashCode(), capacity) }
+                  addReduced(new mutable.HashMap[K2, V2], reduce, source.partition(partitionNo).flatMap(map))
+                    .groupBy { case (k, _) => shrunk(k.hashCode(), reducersNum) }
                 }
                 reducerFibers <- ZIO.foreachPar(partitionedData) {
                   case (partition, mappedData) => forkTo(reducers(partition)) {
@@ -65,7 +70,7 @@ object Main {
             }
           }
           _ <- Fiber.joinAll(mapperFibers)
-          collectFibers <- ZIO.foreach(0 until capacity) { partNo =>
+          collectFibers <- ZIO.foreach(0 until reducersNum) { partNo =>
             forkTo(reducers(partNo))(env[Ref[mutable.Map[K2, V2]]].flatMap(_.get))
           }
           result <- collectFibers.foldLeft(IO(new mutable.ArrayBuffer[(K2, V2)])) { (io, f) =>
@@ -85,18 +90,45 @@ object Main {
   def main(args: Array[String]): Unit = {
     val system = createActorSystem("test")
     val runtime = new DefaultRuntime {}
-    def program[N[+_]] = mapReduce[N, Unit, Unit, Unit, Unit](
-      source = new Source[Unit, Unit] {
-        override def numPartitions: Int = 1
 
-        override def partition(n: Int): Iterable[(Unit, Unit)] = List.empty
+    def program[N[+ _]] = mapReduce[N, String, String, Int](
+      source = new Source[String] {
+        private val data: String =
+          """Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
+            |labore et dolore magna aliqua. Dolor sed viverra ipsum nunc aliquet bibendum enim. In massa
+            |tempor nec feugiat. Nunc aliquet bibendum enim facilisis gravida. Nisl nunc mi ipsum faucibus
+            |vitae aliquet nec ullamcorper. Amet luctus venenatis lectus magna fringilla. Volutpat maecenas
+            |volutpat blandit aliquam etiam erat velit scelerisque in. Egestas egestas fringilla phasellus
+            |faucibus scelerisque eleifend. Sagittis orci a scelerisque purus semper eget duis. Nulla
+            |pharetra diam sit amet nisl suscipit. Sed adipiscing diam donec adipiscing tristique
+            |risus nec feugiat in. Fusce ut placerat orci nulla. Pharetra vel turpis nunc eget lorem dolor.
+            |Tristique senectus et netus et malesuada.
+            |
+            |Etiam tempor orci eu lobortis elementum nibh tellus molestie. Neque egestas congue quisque egestas.
+            |Egestas integer eget aliquet nibh praesent tristique. Vulputate mi sit amet mauris. Sodales neque
+            |sodales ut etiam sit. Dignissim suspendisse in est ante in. Volutpat commodo sed egestas egestas.
+            |Felis donec et odio pellentesque diam. Pharetra vel turpis nunc eget lorem dolor sed viverra.
+            |Porta nibh venenatis cras sed felis eget. Aliquam ultrices sagittis orci a. Dignissim diam quis
+            |enim lobortis. Aliquet porttitor lacus luctus accumsan. Dignissim convallis aenean et tortor
+            |at risus viverra adipiscing at.
+            |"""
+
+        private val partitions: Vector[String] = data.stripMargin.replaceAll(raw"[\p{Punct}]", "").toLowerCase.lines.toVector
+
+        override def numPartitions: Int = partitions.length
+
+        override def partition(n: Int): Iterable[String] = List(partitions(n))
       },
-      map = (_, _) => List.empty,
-      reduce = (_, _) => ()
+      map = _.split("\\s+").map((_, 1)),
+      reduce = _ + _
     )
+
     val io = beam(program, system, FixedTimeout(20 seconds))
-    val r = runtime.unsafeRunSync(io)
-    println(r)
+    val Exit.Success(r) = runtime.unsafeRunSync(io)
+
+    println("======== res")
+    r.toList.sortBy(_._2).foreach(println)
+
     system.terminate()
   }
 }
