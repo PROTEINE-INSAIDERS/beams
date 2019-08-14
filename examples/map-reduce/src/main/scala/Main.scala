@@ -1,5 +1,8 @@
 import beams._
+import beams.akka.FixedTimeout
+import beams.akka.local.{beam, createActorSystem}
 import scalaz.zio._
+import scala.concurrent.duration._
 
 import scala.collection._
 
@@ -80,9 +83,20 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
-    val r = scala.util.Random
-    for (i <- 0 to 100) {
-      println(shrunk(r.nextInt(), 8))
-    }
+    val system = createActorSystem("test")
+    val runtime = new DefaultRuntime {}
+    def program[N[+_]] = mapReduce[N, Unit, Unit, Unit, Unit](
+      source = new Source[Unit, Unit] {
+        override def numPartitions: Int = 1
+
+        override def partition(n: Int): Iterable[(Unit, Unit)] = List.empty
+      },
+      map = (_, _) => List.empty,
+      reduce = (_, _) => ()
+    )
+    val io = beam(program, system, FixedTimeout(20 seconds))
+    val r = runtime.unsafeRunSync(io)
+    println(r)
+    system.terminate()
   }
 }
