@@ -1,6 +1,6 @@
 import beams._
-import beams.akka.FixedTimeout
 import beams.akka.local.{beam, createActorSystem}
+import beams.akka.FixedTimeout
 import scalaz.zio._
 
 import scala.collection._
@@ -40,10 +40,11 @@ object Main {
                                    ): ZIO[Beam[N, Any], Throwable, Iterable[(K2, V2)]] = {
     val syntax = BeamSyntax[N]()
     import syntax._
+
     val reducersNum = math.min(java.lang.Runtime.getRuntime.availableProcessors(), source.numPartitions)
     for {
       mappers <- ZIO.foreach(0 until source.numPartitions)(node)
-      reducers <- ZIO.foreach(0 until reducersNum)(_ => Ref.make(mutable.Map.empty[K2, V2]) >>= node)
+      reducers <- ZIO.foreach(0 until reducersNum)(_ => Ref.make[mutable.Map[K2, V2]](mutable.Map.empty[K2, V2]) >>= node)
       result <- (Managed.collectAll(mappers) <*> Managed.collectAll(reducers)).use {
         case (mappers, reducerList) => for {
           reducers <- ZIO.succeed(reducerList.toVector)

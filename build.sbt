@@ -36,11 +36,17 @@ lazy val beams = (project in file("beams")).settings(
   )
 )
 
-lazy val examplesMapReduce = (project in file("examples/map-reduce"))
+lazy val mapReduceExample = (project in file("examples/map-reduce"))
   .settings(commonSettings)
   .dependsOn(beams)
 
-lazy val examples = examplesMapReduce
+lazy val clusterExample = (project in file("examples/cluster"))
+  .settings(commonSettings)
+  .settings(
+    libraryDependencies ++= Seq("com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion))
+  .dependsOn(beams)
+
+lazy val examples = mapReduceExample
 
 lazy val root = (project in file("."))
   .aggregate(beams, examples)

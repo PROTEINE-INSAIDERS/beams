@@ -9,7 +9,7 @@ object NodeActor {
   type Ref = ActorRef[Command]
   type Ctx = ActorContext[Command]
 
-  sealed trait Command extends AkkaMessage
+  sealed trait Command extends BeamMessage
 
   final case class CreateNode(env: Any, replyTo: ActorRef[Ref]) extends Command
 
