@@ -1,4 +1,3 @@
 package beams
 
-package object akka extends BeamSyntax[AkkaNode] {
-}
+package object akka extends BeamSyntax[AkkaNode]

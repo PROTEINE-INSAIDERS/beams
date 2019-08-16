@@ -1,5 +1,3 @@
 package beams
 
-package object local extends BeamSyntax[LocalNode] {
-
-}
+package object local extends BeamSyntax[LocalNode]
