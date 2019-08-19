@@ -1,14 +1,23 @@
 package beams.akka
 
+import akka.actor.BootstrapSetup
+import akka.actor.setup.ActorSystemSetup
 import akka.actor.typed._
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.util.Timeout
 import beams.Beam
 import scalaz.zio._
 
+//TODO: возможно для единообразия следует переработать АPI - createActorSystem должен принимать параметр Env
+// и создавать ActorSystem[NodeActor.Ref] с данным Env.
 package object local {
-  def createActorSystem(name: String): ActorSystem[SpawnProtocol.Command] = {
-    ActorSystem(SpawnProtocol(), name)
+  /**
+    * Create local actor system with spawn protocol for running tasks in current process.
+    *
+    * Usually there is no reasons to use beams in non-distributed applications thus this method primary usable for debugging.
+    */
+  def createActorSystem(name: String = "beams", setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup())): ActorSystem[SpawnProtocol.Command] = {
+    ActorSystem(SpawnProtocol(), name, setup)
   }
 
   def beam[A](task: TaskR[Beam[AkkaNode, Any], A], system: ActorSystem[SpawnProtocol.Command], timeout: LocalTimeout): Task[A] = {

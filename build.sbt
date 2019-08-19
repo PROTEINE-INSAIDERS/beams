@@ -31,6 +31,7 @@ lazy val beams = (project in file("beams")).settings(
   commonSettings,
   libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
+    "com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion,
     "org.scalaz" %% "scalaz-zio" % "1.0-RC5",
     "com.twitter" %% "chill-akka" % "0.9.3"
   )
@@ -42,11 +43,10 @@ lazy val mapReduceExample = (project in file("examples/map-reduce"))
 
 lazy val clusterExample = (project in file("examples/cluster"))
   .settings(commonSettings)
-  .settings(
-    libraryDependencies ++= Seq("com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion))
   .dependsOn(beams)
 
-lazy val examples = mapReduceExample
+lazy val examples = (project in file("examples"))
+  .aggregate(mapReduceExample, clusterExample)
 
 lazy val root = (project in file("."))
   .aggregate(beams, examples)

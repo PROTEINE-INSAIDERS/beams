@@ -41,7 +41,7 @@ object Main {
       } yield result
     }
 
-    val system = createActorSystem("test")
+    val system = createActorSystem()
     val runtime = new DefaultRuntime {}
     val io = beam(program, system, FixedTimeout(20 seconds))
     val r = runtime.unsafeRunSync(io)
