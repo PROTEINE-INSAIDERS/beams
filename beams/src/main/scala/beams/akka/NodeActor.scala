@@ -7,7 +7,6 @@ import scalaz.zio._
 
 object NodeActor {
   type Ref[+Env] = ActorRef[Command[Env]]
-  // type Ctx[Env] = ActorContext[Command[Env]]
 
   sealed trait Command[-Env] extends BeamMessage
 
@@ -26,7 +25,7 @@ object NodeActor {
     Behaviors.receiveMessagePartial {
       case RunTask(task, replyTo, TimeLimitContainer(timeLimit)) =>
         val beam = AkkaBeam[Env](self, env, timeLimit, ctx.system.scheduler)
-        val program = task.asInstanceOf[TaskR[Beam[AkkaNode, Env], Any]].provide(beam)
+        val program = task.provide(beam)
         runtime.unsafeRunAsync(program)(result => replyTo ! result)
         Behaviors.same
 

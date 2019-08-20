@@ -19,7 +19,7 @@ object Main {
     val system3 = startClusterNode(25522)
     Thread.sleep(2000)
 
-    val b = beam[String, Unit](program, system1)
+    val b = beam(program, system1)
     val runtime = new DefaultRuntime {}
     val r = runtime.unsafeRunSync(b)
     println(r)
