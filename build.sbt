@@ -22,7 +22,7 @@ lazy val commonScalacOptions = Seq(
   "-Ypartial-unification")
 
 lazy val commonSettings = Seq(
-  scalaVersion := "2.12.8",
+  scalaVersion := "2.12.9",
   scalacOptions ++= commonScalacOptions,
   licenses += ("BSD-3-Clause", url("http://opensource.org/licenses/BSD-3-Clause"))
 )

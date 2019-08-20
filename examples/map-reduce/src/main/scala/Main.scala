@@ -89,7 +89,7 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
-    val system = createActorSystem()
+    val system = createActorSystem(env = ())
     val runtime = new DefaultRuntime {}
 
     def program[N[+ _]] = mapReduce[N, String, String, Int](
