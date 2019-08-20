@@ -1,3 +1,3 @@
 package beams.akka
 
-case class AkkaNode[+Env](ref: NodeActor.Ref) extends AnyVal
+case class AkkaNode[+Env](ref: NodeActor.Ref[Env]) extends AnyVal

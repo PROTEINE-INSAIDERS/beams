@@ -13,6 +13,9 @@ object Beam {
 
     def self: Node[Env]
 
+    // это не верное определение кластера, потому что env корневых узлов можен не совпадать с Env текущего узла.
+    // def cluster: Task[List[Node[Env]]]
+
     def createNode[R](r: R): Task[Node[R]]
 
     def releaseNode[R](node: Node[R]): Canceler
@@ -20,24 +23,4 @@ object Beam {
     def env: Env
   }
 
-}
-
-trait BeamSyntax[Node[+ _]] {
-  def forkTo[R, A](node: Node[R])(task: TaskR[Beam[Node, R], A]): TaskR[Beam[Node, Any], Fiber[Throwable, A]] =
-    ZIO.accessM(_.beam.forkTo(node)(task))
-
-  def self[Env]: TaskR[Beam[Node, Env], Node[Env]] = ZIO.access(_.beam.self)
-
-  def createNode[R](r: R): TaskR[Beam[Node, Any], Node[R]] = ZIO.accessM(_.beam.createNode(r))
-
-  def releaseNode[R](node: Node[R]): TaskR[Beam[Node, Any], _] = ZIO.accessM(_.beam.releaseNode(node))
-
-  def env[Env]: TaskR[Beam[Node, Env], Env] = ZIO.access(_.beam.env)
-
-  def node[R](r: R): TaskR[Beam[Node, Any], Managed[Throwable, Node[R]]] = ZIO.access(F =>
-    Managed.make(F.beam.createNode(r))(F.beam.releaseNode[R]))
-}
-
-object BeamSyntax {
-  def apply[Node[+ _]](): BeamSyntax[Node] = new BeamSyntax[Node]() {}
 }
