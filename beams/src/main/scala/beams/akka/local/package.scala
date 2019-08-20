@@ -17,16 +17,16 @@ package object local {
                               name: String = "beams",
                               setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
                               runtime: DefaultRuntime = new DefaultRuntime() {},
-                            ): ActorSystem[SpawnNodeActor.Command] = {
+                            ): ActorSystem[SpawnNodeActor.Command[Env]] = {
     ActorSystem(SpawnNodeActor(env, runtime), name, setup)
   }
 
-  def beam[Env, A](task: TaskR[Beam[AkkaNode, Env], A], system: ActorSystem[SpawnNodeActor.Command], timeout: TimeLimit): Task[A] = {
+  def beam[Env, A](task: TaskR[Beam[AkkaNode, Env], A], system: ActorSystem[SpawnNodeActor.Command[Env]], timeout: TimeLimit): Task[A] = {
     implicit val t: TimeLimit = timeout
     implicit val s: Scheduler = system.scheduler
 
-    Managed.make(askZio[NodeActor.Ref](system, SpawnNodeActor.Spawn))(tellZio(_, NodeActor.Stop)).use { root =>
-      askZio[Exit[Throwable, Any]](root, NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Any], A]], _, TimeLimitContainer(timeout, root)))
+    Managed.make(askZio[NodeActor.Ref[Env]](system, SpawnNodeActor.Spawn[Env]))(tellZio(_, NodeActor.Stop)).use { root =>
+      askZio[Exit[Throwable, Any]](root, NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Env], A]], _, TimeLimitContainer(timeout, root)))
     }.flatMap(exit => IO.done(exit.asInstanceOf[Exit[Throwable, A]]))
   }
 }

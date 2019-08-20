@@ -4,7 +4,7 @@ import _root_.akka.actor.typed._
 import beams._
 import scalaz.zio._
 
-final case class AkkaBeam[+Env](self: AkkaNode[Env], env: Env, timeout: TimeLimit, scheduler: Scheduler) extends Beam[AkkaNode, Env] {
+final case class AkkaBeam[Env](self: AkkaNode[Env], env: Env, timeout: TimeLimit, scheduler: Scheduler) extends Beam[AkkaNode, Env] {
   override val beam: Beam.Service[AkkaNode, Env] = AkkaBeam.Service[Env](self, env, timeout, scheduler)
 }
 
@@ -20,14 +20,14 @@ object AkkaBeam {
                              (task: TaskR[Beam[AkkaNode, R], A]): Task[Fiber[Throwable, A]] =
       askZio[Exit[Throwable, Any]](
         node.ref,
-        NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Any], Any]], _, TimeLimitContainer(timeout, node.ref)))(
+        NodeActor.RunTask(task, _, TimeLimitContainer(timeout, node.ref)))(
         timeout,
         scheduler
       ).flatMap(exit => Task.done(exit.asInstanceOf[Exit[Throwable, A]]))
         .fork
 
     override def createNode[R](a: R): Task[AkkaNode[R]] =
-      askZio[NodeActor.Ref](self.ref, NodeActor.CreateNode(a, _))(timeout, scheduler).map(AkkaNode[R])
+      askZio[NodeActor.Ref[R]](self.ref, NodeActor.CreateNode(a, _))(timeout, scheduler).map(AkkaNode[R])
 
     override def releaseNode[R](node: AkkaNode[R]): Canceler = ZIO.effectTotal(node.ref.tell(NodeActor.Stop))
   }

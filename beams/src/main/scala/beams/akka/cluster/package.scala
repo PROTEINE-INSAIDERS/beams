@@ -10,9 +10,12 @@ import akka.actor.typed.scaladsl.adapter._
 import akka.util.Timeout
 import beams.{Beam, BeamSyntax}
 import scalaz.zio._
+import scala.concurrent.duration._
 
 package object cluster extends BeamSyntax[AkkaNode] {
-  val defaultServiceKey: ServiceKey[SpawnNodeActor.Command] = ServiceKey[SpawnNodeActor.Command]("beams-root-node")
+  def defaultServiceKey[Env]: ServiceKey[SpawnNodeActor.Command[Env]] = ServiceKey[SpawnNodeActor.Command[Env]]("beams-root-node")
+
+  val defaultTimeLimit = FixedTimeout(30 seconds)
 
   /**
     * Create beams actor system and join the cluster.
@@ -22,7 +25,7 @@ package object cluster extends BeamSyntax[AkkaNode] {
                               name: String = "beams",
                               setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
                               runtime: DefaultRuntime = new DefaultRuntime() {},
-                              beamsKey: ServiceKey[SpawnNodeActor.Command] = defaultServiceKey
+                              beamsKey: ServiceKey[SpawnNodeActor.Command[Env]] = defaultServiceKey[Env]
                             ): ActorSystem[Nothing] = {
     val untypedSystem = akka.actor.ActorSystem(name, setup)
     val system = untypedSystem.toTyped
@@ -32,24 +35,24 @@ package object cluster extends BeamSyntax[AkkaNode] {
   }
 
   //TODO: rename to toTask?
-  def beam[A](
-               task: TaskR[Beam[AkkaNode, Any], A],
-               system: ActorSystem[Nothing],
-               timeLimit: TimeLimit,
-               beamsKey: ServiceKey[SpawnNodeActor.Command] = defaultServiceKey
-             ): Task[A] = {
+  def beam[Env, A](
+                    task: TaskR[Beam[AkkaNode, Env], A],
+                    system: ActorSystem[Nothing],
+                    timeLimit: TimeLimit = defaultTimeLimit,
+                    beamsKey: ServiceKey[SpawnNodeActor.Command[Env]] = defaultServiceKey[Env]
+                  ): Task[A] = {
     implicit val t: TimeLimit = timeLimit
     implicit val s: Scheduler = system.scheduler
 
     for {
       listing <- askZio[Listing](system.receptionist, replyTo => Receptionist.Find(beamsKey, replyTo))
       exit <- Managed.collectAll(
-        listing.serviceInstances(beamsKey).map(spawn => Managed.make(askZio[NodeActor.Ref](spawn, SpawnNodeActor.Spawn))(tellZio(_, NodeActor.Stop))))
+        listing.serviceInstances(beamsKey).map(spawn => Managed.make(askZio[NodeActor.Ref[Env]](spawn, SpawnNodeActor.Spawn[Env]))(tellZio(_, NodeActor.Stop))))
         .use { nodes =>
           Task.fromFuture { _ =>
             val master = nodes.find(_.path.address.hasLocalScope).orElse(nodes.headOption).getOrElse(throw new Exception("No nodes to run the program!"))
             implicit val timeout: Timeout = timeLimit.current()
-            master.ask[Exit[Throwable, Any]](NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Any], A]], _, TimeLimitContainer(timeLimit, master)))
+            master.ask[Exit[Throwable, Any]](NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Env], A]], _, TimeLimitContainer(timeLimit, master)))
           }
         }
       result <- IO.done(exit.asInstanceOf[Exit[Throwable, A]])

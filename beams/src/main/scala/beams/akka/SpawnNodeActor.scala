@@ -5,16 +5,16 @@ import akka.actor.typed.scaladsl._
 import scalaz.zio._
 
 object SpawnNodeActor {
-  type Ref = ActorRef[Command]
-  type Ctx = ActorContext[Command]
+  type Ref[+Env] = ActorRef[Command[Env]]
+  // type Ctx = ActorContext[Command]
 
-  sealed trait Command extends BeamMessage
+  sealed trait Command[-Env] extends BeamMessage
 
-  final case class Spawn(replyTo: ActorRef[NodeActor.Ref]) extends Command
+  final case class Spawn[Env](replyTo: ActorRef[NodeActor.Ref[Env]]) extends Command[Env]
 
-  object Stop extends Command
+  object Stop extends Command[Nothing]
 
-  def apply[Env](env: Env, runtime: DefaultRuntime): Behavior[Command] = Behaviors.setup { ctx =>
+  def apply[Env](env: Env, runtime: DefaultRuntime): Behavior[Command[Env]] = Behaviors.setup { ctx =>
     Behaviors.receiveMessagePartial {
       case Spawn(replyTo) =>
         replyTo ! ctx.spawnAnonymous(NodeActor(env, runtime))
