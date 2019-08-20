@@ -6,7 +6,6 @@ import scalaz.zio._
 
 object SpawnNodeActor {
   type Ref[+Env] = ActorRef[Command[Env]]
-  // type Ctx = ActorContext[Command]
 
   sealed trait Command[-Env] extends BeamMessage
 
