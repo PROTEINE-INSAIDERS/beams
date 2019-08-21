@@ -10,6 +10,7 @@ import akka.actor.typed.scaladsl.adapter._
 import akka.util.Timeout
 import beams.{Beam, BeamSyntax}
 import scalaz.zio._
+
 import scala.concurrent.duration._
 
 package object cluster extends BeamSyntax[AkkaNode] {
@@ -52,10 +53,10 @@ package object cluster extends BeamSyntax[AkkaNode] {
           Task.fromFuture { _ =>
             val master = nodes.find(_.path.address.hasLocalScope).orElse(nodes.headOption).getOrElse(throw new Exception("No nodes to run the program!"))
             implicit val timeout: Timeout = timeLimit.current()
-            master.ask[Exit[Throwable, Any]](NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Env], A]], _, TimeLimitContainer(timeLimit, master)))
+            master.ask[Exit[Throwable, A]](NodeActor.RunTask(task, _, TimeLimitContainer(timeLimit, master)))
           }
         }
-      result <- IO.done(exit.asInstanceOf[Exit[Throwable, A]])
+      result <- IO.done(exit)
     }
       yield result
   }

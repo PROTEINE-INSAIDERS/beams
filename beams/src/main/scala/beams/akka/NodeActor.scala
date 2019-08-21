@@ -12,11 +12,11 @@ object NodeActor {
 
   final case class CreateNode[Env](env: Env, replyTo: ActorRef[Ref[Env]]) extends Command[Any]
 
-  final case class RunTask[Env](
-                                 task: TaskR[Beam[AkkaNode, Env], Any],
-                                 replyTo: ActorRef[Exit[Throwable, Any]],
-                                 timeLimit: TimeLimitContainer
-                               ) extends Command[Env]
+  final case class RunTask[Env, A](
+                                    task: TaskR[Beam[AkkaNode, Env], A],
+                                    replyTo: ActorRef[Exit[Throwable, A]],
+                                    timeLimit: TimeLimitContainer
+                                  ) extends Command[Env]
 
   object Stop extends Command[Any]
 

@@ -26,7 +26,7 @@ package object local {
     implicit val s: Scheduler = system.scheduler
 
     Managed.make(askZio[NodeActor.Ref[Env]](system, SpawnNodeActor.Spawn[Env]))(tellZio(_, NodeActor.Stop)).use { root =>
-      askZio[Exit[Throwable, Any]](root, NodeActor.RunTask(task.asInstanceOf[TaskR[Beam[AkkaNode, Env], A]], _, TimeLimitContainer(timeout, root)))
-    }.flatMap(exit => IO.done(exit.asInstanceOf[Exit[Throwable, A]]))
+      askZio[Exit[Throwable, A]](root, NodeActor.RunTask(task, _, TimeLimitContainer(timeout, root)))
+    }.flatMap(exit => IO.done(exit))
   }
 }
