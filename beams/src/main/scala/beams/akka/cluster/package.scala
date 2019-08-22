@@ -1,5 +1,7 @@
 package beams.akka
 
+import java.net.URLEncoder
+
 import akka.actor.BootstrapSetup
 import akka.actor.setup.ActorSystemSetup
 import akka.actor.typed._
@@ -12,46 +14,52 @@ import beams.{Beam, BeamSyntax}
 import scalaz.zio._
 
 import scala.concurrent.duration._
+import scala.reflect.runtime.universe._
 
 package object cluster extends BeamSyntax[AkkaNode] {
-  def defaultServiceKey[Env]: ServiceKey[SpawnNodeActor.Command[Env]] = ServiceKey[SpawnNodeActor.Command[Env]]("beams-root-node")
+  def serviceKey[Env: TypeTag]: ServiceKey[SpawnNodeActor.Command[Env]] = {
+    val uid = URLEncoder.encode(typeTag[Env].tpe.toString, "UTF-8")
+    ServiceKey[SpawnNodeActor.Command[Env]](s"beam-$uid")
+  }
 
-  val defaultTimeLimit = FixedTimeout(30 seconds)
+  private val defaultTimeLimit = FixedTimeout(30 seconds)
 
   /**
     * Create beams actor system and join the cluster.
     */
-  def createActorSystem[Env](
-                              env: Env,
-                              name: String = "beams",
-                              setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
-                              runtime: DefaultRuntime = new DefaultRuntime() {},
-                              beamsKey: ServiceKey[SpawnNodeActor.Command[Env]] = defaultServiceKey[Env]
-                            ): ActorSystem[Nothing] = {
+  def createActorSystem[Env: TypeTag](
+                                       env: Env,
+                                       name: String = "beams",
+                                       setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
+                                       runtime: DefaultRuntime = new DefaultRuntime() {}
+                                     ): ActorSystem[Nothing] = {
+    val key = serviceKey[Env]
     val untypedSystem = akka.actor.ActorSystem(name, setup)
     val system = untypedSystem.toTyped
-    val rootNode = untypedSystem.spawn(SpawnNodeActor(env, runtime), beamsKey.id)
-    system.receptionist ! Receptionist.Register(beamsKey, rootNode)
+    val rootNode = untypedSystem.spawn(SpawnNodeActor(env, runtime), key.id)
+    system.receptionist ! Receptionist.Register(key, rootNode)
     system
   }
 
   //TODO: rename to toTask?
-  def beam[Env, A](
-                    task: TaskR[Beam[AkkaNode, Env], A],
-                    system: ActorSystem[Nothing],
-                    timeLimit: TimeLimit = defaultTimeLimit,
-                    beamsKey: ServiceKey[SpawnNodeActor.Command[Env]] = defaultServiceKey[Env]
-                  ): Task[A] = {
+  def beam[Env: TypeTag, A](
+                             task: TaskR[Beam[AkkaNode, Env], A],
+                             system: ActorSystem[Nothing],
+                             timeLimit: TimeLimit = defaultTimeLimit
+                           ): Task[A] = {
+    val key = serviceKey[Env]
     implicit val t: TimeLimit = timeLimit
     implicit val s: Scheduler = system.scheduler
 
     for {
-      listing <- askZio[Listing](system.receptionist, replyTo => Receptionist.Find(beamsKey, replyTo))
+      listing <- askZio[Listing](system.receptionist, replyTo => Receptionist.Find(key, replyTo))
       exit <- Managed.collectAll(
-        listing.serviceInstances(beamsKey).map(spawn => Managed.make(askZio[NodeActor.Ref[Env]](spawn, SpawnNodeActor.Spawn[Env]))(tellZio(_, NodeActor.Stop))))
+        listing.serviceInstances(key).map(spawn => Managed.make(askZio[NodeActor.Ref[Env]](spawn, SpawnNodeActor.Spawn[Env]))(tellZio(_, NodeActor.Stop))))
         .use { nodes =>
           Task.fromFuture { _ =>
-            val master = nodes.find(_.path.address.hasLocalScope).orElse(nodes.headOption).getOrElse(throw new Exception("No nodes to run the program!"))
+            val master = nodes.find(_.path.address.hasLocalScope).orElse(nodes.headOption).getOrElse {
+              throw new Exception(s"Unable to find any reachable node with a `${typeTag[Env].tpe}' environment.")
+            }
             implicit val timeout: Timeout = timeLimit.current()
             master.ask[Exit[Throwable, A]](NodeActor.RunTask(task, _, TimeLimitContainer(timeLimit, master)))
           }

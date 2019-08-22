@@ -30,6 +30,7 @@ lazy val commonSettings = Seq(
 lazy val beams = (project in file("beams")).settings(
   commonSettings,
   libraryDependencies ++= Seq(
+    "org.scala-lang" % "scala-reflect" % scalaVersion.value,
     "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
     "com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion,
     "org.scalaz" %% "scalaz-zio" % "1.0-RC5",
