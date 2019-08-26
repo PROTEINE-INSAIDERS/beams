@@ -3,6 +3,7 @@ name := "beams"
 version := "0.1"
 
 val akkaVersion = "2.6.0-M5"
+val zioVersion = "1.0-RC5"
 
 lazy val commonScalacOptions = Seq(
   "-encoding",
@@ -33,7 +34,7 @@ lazy val beams = (project in file("beams")).settings(
     "org.scala-lang" % "scala-reflect" % scalaVersion.value,
     "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
     "com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion,
-    "org.scalaz" %% "scalaz-zio" % "1.0-RC5",
+    "org.scalaz" %% "scalaz-zio" % zioVersion,
     "com.twitter" %% "chill-akka" % "0.9.3"
   )
 )
@@ -43,7 +44,7 @@ lazy val mapReduceExample = (project in file("examples/map-reduce"))
   .dependsOn(beams)
 
 lazy val clusterExample = (project in file("examples/cluster"))
-  .settings(commonSettings)
+  .settings(commonSettings, libraryDependencies ++= Seq("org.scalaz" %% "scalaz-zio-streams" % zioVersion))
   .dependsOn(beams)
 
 lazy val examples = (project in file("examples"))

@@ -8,7 +8,6 @@ import akka.actor.typed._
 import akka.actor.typed.receptionist.Receptionist.Listing
 import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
 import akka.actor.typed.scaladsl.AskPattern._
-import akka.actor.typed.scaladsl.adapter._
 import akka.util.Timeout
 import beams.{Beam, BeamSyntax}
 import scalaz.zio._
@@ -27,18 +26,35 @@ package object cluster extends BeamSyntax[AkkaNode] {
   /**
     * Create beams actor system and join the cluster.
     */
-  def createActorSystem[Env: TypeTag](
-                                       env: Env,
-                                       name: String = "beams",
-                                       setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
-                                       runtime: DefaultRuntime = new DefaultRuntime() {}
-                                     ): ActorSystem[Nothing] = {
-    val key = serviceKey[Env]
-    val untypedSystem = akka.actor.ActorSystem(name, setup)
-    val system = untypedSystem.toTyped
-    val rootNode = untypedSystem.spawn(SpawnNodeActor(env, runtime), key.id)
-    system.receptionist ! Receptionist.Register(key, rootNode)
-    system
+  def createActorSystem(
+                         name: String = "beams",
+                         setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup())
+                       ): Task[ActorSystem[SpawnProtocol.Command]] = Task {
+    ActorSystem(SpawnProtocol(), name, setup)
+  }
+
+  def registerRoot[Env: TypeTag](
+                                  env: Env,
+                                  system: ActorSystem[SpawnProtocol.Command],
+                                  runtime: DefaultRuntime = new DefaultRuntime() {},
+                                )
+                                (implicit timeLimit: TimeLimit = defaultTimeLimit): Task[SpawnNodeActor.Ref[Env]] = {
+    implicit val s: Scheduler = system.scheduler
+
+    for {
+      key <- Task(serviceKey[Env])
+      root <- askZio[SpawnNodeActor.Ref[Env]](system, SpawnProtocol.Spawn(SpawnNodeActor(env, runtime), key.id, Props.empty, _))
+      _ <- tellZio(system.receptionist, Receptionist.Register(key, root))
+    } yield root
+  }
+
+  def listingRoot[Env: TypeTag](system: ActorSystem[SpawnProtocol.Command])
+                               (implicit timeLimit: TimeLimit = defaultTimeLimit): Task[Queue[SpawnNodeActor.Ref[Env]]] = {
+    implicit val s: Scheduler = system.scheduler
+    for {
+      queue <- scalaz.zio.Queue.unbounded[Set[SpawnNodeActor.Ref[Env]]]
+      listener <- tellZio(system.receptionist, ListenReceptionistActor(serviceKey[Env], queue))
+    } yield queue
   }
 
   //TODO: rename to toTask?
