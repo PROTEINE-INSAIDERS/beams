@@ -12,7 +12,6 @@ import akka.util.Timeout
 import beams.{Beam, BeamSyntax}
 import scalaz.zio._
 
-import scala.concurrent.duration._
 import scala.reflect.runtime.universe._
 
 package object cluster extends BeamSyntax[AkkaNode] {
@@ -20,8 +19,6 @@ package object cluster extends BeamSyntax[AkkaNode] {
     val uid = URLEncoder.encode(typeTag[Env].tpe.toString, "UTF-8")
     ServiceKey[SpawnNodeActor.Command[Env]](s"beam-$uid")
   }
-
-  private val defaultTimeLimit = FixedTimeout(30 seconds)
 
   /**
     * Create beams actor system and join the cluster.
@@ -35,10 +32,11 @@ package object cluster extends BeamSyntax[AkkaNode] {
 
   def registerRoot[Env: TypeTag](
                                   env: Env,
-                                  system: ActorSystem[SpawnProtocol.Command],
-                                  runtime: DefaultRuntime = new DefaultRuntime() {},
+                                  system: ActorSystem[SpawnProtocol.Command]
                                 )
-                                (implicit timeLimit: TimeLimit = defaultTimeLimit): Task[SpawnNodeActor.Ref[Env]] = {
+                                (
+                                  implicit timeLimit: TimeLimit, runtime: DefaultRuntime
+                                ): Task[SpawnNodeActor.Ref[Env]] = {
     implicit val s: Scheduler = system.scheduler
 
     for {
@@ -48,20 +46,33 @@ package object cluster extends BeamSyntax[AkkaNode] {
     } yield root
   }
 
-  def listingRoot[Env: TypeTag](system: ActorSystem[SpawnProtocol.Command])
-                               (implicit timeLimit: TimeLimit = defaultTimeLimit): Task[Queue[SpawnNodeActor.Ref[Env]]] = {
-    implicit val s: Scheduler = system.scheduler
-    for {
-      queue <- scalaz.zio.Queue.unbounded[Set[SpawnNodeActor.Ref[Env]]]
-      listener <- tellZio(system.receptionist, ListenReceptionistActor(serviceKey[Env], queue))
-    } yield queue
+  def rootNodesListing[Env: TypeTag](
+                                      system: ActorSystem[SpawnProtocol.Command]
+                                    )
+                                    (
+                                      implicit timeLimit: TimeLimit, runtime: DefaultRuntime
+                                    ): Managed[Throwable, Queue[Set[SpawnNodeActor.Ref[Env]]]] = {
+    Managed.make {
+      implicit val s: Scheduler = system.scheduler
+      for {
+        key <- Task(serviceKey[Env])
+        queue <- scalaz.zio.Queue.unbounded[Set[SpawnNodeActor.Ref[Env]]]
+        guard <- askZio[ReceptionistListener.Ref](system, SpawnProtocol.Spawn(ReceptionistListener(runtime), "", Props.empty, _))
+        listener <- askZio[ActorRef[Receptionist.Listing]](guard, ReceptionistListener.Register(key, queue, timeLimit, _))
+        _ <- tellZio(system.receptionist, Receptionist.subscribe(key, listener))
+      } yield {
+        (queue, guard)
+      }
+    } { case (_, listener) =>
+      ZIO.effectTotal(listener ! ReceptionistListener.Stop)
+    } map (_._1)
   }
 
   //TODO: rename to toTask?
   def beam[Env: TypeTag, A](
                              task: TaskR[Beam[AkkaNode, Env], A],
                              system: ActorSystem[Nothing],
-                             timeLimit: TimeLimit = defaultTimeLimit
+                             timeLimit: TimeLimit
                            ): Task[A] = {
     val key = serviceKey[Env]
     implicit val t: TimeLimit = timeLimit

@@ -7,7 +7,7 @@ import scalaz.zio._
 object SpawnNodeActor {
   type Ref[+Env] = ActorRef[Command[Env]]
 
-  sealed trait Command[-Env] extends BeamMessage
+  sealed trait Command[-Env] extends SerializableMessage
 
   final case class Spawn[Env](replyTo: ActorRef[NodeActor.Ref[Env]]) extends Command[Env]
 

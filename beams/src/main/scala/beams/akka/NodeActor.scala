@@ -8,7 +8,7 @@ import scalaz.zio._
 object NodeActor {
   type Ref[+Env] = ActorRef[Command[Env]]
 
-  sealed trait Command[-Env] extends BeamMessage
+  sealed trait Command[-Env] extends SerializableMessage
 
   final case class CreateNode[Env](env: Env, replyTo: ActorRef[Ref[Env]]) extends Command[Any]
 
