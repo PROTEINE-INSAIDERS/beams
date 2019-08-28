@@ -24,20 +24,9 @@ object Main extends App {
       _ <- registerRoot("node1", system1)
       _ <- registerRoot("node2", system2)
       _ <- registerRoot("node3", system3)
-      _ <- rootNodesListing[String](system1).use { queue =>
-        for {
-          _ <- putStrLn(s"==== Wait queue $queue")
-          _ <- getStrLn
-          // _ <- Stream.fromQueue(queue).foreach(a => putStrLn(s"===== $a"))
-          /*
-          _ <- Stream.fromQueue(queue).run(Sink.ignoreWhileM[Console, Throwable, Set[SpawnNodeActor.Ref[String]]]{a =>
-            for {
-              _ <- putStrLn(s"==== $a")
-            } yield  a.size < 3
-          })
-          */
-        } yield ()
-      }
+      _ <- putStrLn("Waiting for 3 nodes...")
+      _ <- rootNodesListing[String](system1).use(Stream.fromQueue(_).run(Sink.ignoreWhile[Set[SpawnNodeActor.Ref[String]]](_.size < 3)))
+      _ <- putStrLn("Done.")
       _ <- getStrLn
     } yield ()
   }
