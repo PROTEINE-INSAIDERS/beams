@@ -15,9 +15,9 @@ import scalaz.zio._
 import scala.reflect.runtime.universe._
 
 package object cluster extends BeamSyntax[AkkaNode] {
-  def serviceKey[Env: TypeTag]: ServiceKey[SpawnNodeActor.Command[Env]] = {
+  def serviceKey[Env: TypeTag]: ServiceKey[RootNodeActor.Command[Env]] = {
     val uid = URLEncoder.encode(typeTag[Env].tpe.toString, "UTF-8")
-    ServiceKey[SpawnNodeActor.Command[Env]](s"beam-$uid")
+    ServiceKey[RootNodeActor.Command[Env]](s"beam-$uid")
   }
 
   /**
@@ -36,27 +36,29 @@ package object cluster extends BeamSyntax[AkkaNode] {
                                 )
                                 (
                                   implicit timeLimit: TimeLimit, runtime: DefaultRuntime
-                                ): Task[SpawnNodeActor.Ref[Env]] = {
+                                ): Task[RootNodeActor.Ref[Env]] = {
     implicit val s: Scheduler = system.scheduler
 
     for {
       key <- Task(serviceKey[Env])
-      root <- askZio[SpawnNodeActor.Ref[Env]](system, SpawnProtocol.Spawn(SpawnNodeActor(env, runtime), key.id, Props.empty, _))
+      root <- askZio[RootNodeActor.Ref[Env]](system, SpawnProtocol.Spawn(RootNodeActor(env, runtime), key.id, Props.empty, _))
       _ <- tellZio(system.receptionist, Receptionist.Register(key, root))
     } yield root
   }
 
-  def rootNodesListing[Env: TypeTag](
+  //TODO: возможно это следует перенести в интерфейс Beam (или Cluster).
+  // с другой стороны конкретно этот интерфейс используется для ожидания готовности кластера перед запуском beam-а.
+  def rootNodeListing[Env: TypeTag](
                                       system: ActorSystem[SpawnProtocol.Command]
                                     )
-                                    (
+                                   (
                                       implicit timeLimit: TimeLimit, runtime: DefaultRuntime
-                                    ): Managed[Throwable, Queue[Set[SpawnNodeActor.Ref[Env]]]] = {
+                                    ): Managed[Throwable, Queue[Set[RootNodeActor.Ref[Env]]]] = {
     Managed.make {
       implicit val s: Scheduler = system.scheduler
       for {
         key <- Task(serviceKey[Env])
-        queue <- scalaz.zio.Queue.unbounded[Set[SpawnNodeActor.Ref[Env]]]
+        queue <- scalaz.zio.Queue.unbounded[Set[RootNodeActor.Ref[Env]]]
         guard <- askZio[ReceptionistListener.Ref](system, SpawnProtocol.Spawn(ReceptionistListener(runtime), "", Props.empty, _))
         listener <- askZio[ActorRef[Receptionist.Listing]](guard, ReceptionistListener.Register(key, queue, timeLimit, _))
         _ <- tellZio(system.receptionist, Receptionist.subscribe(key, listener))
@@ -69,6 +71,8 @@ package object cluster extends BeamSyntax[AkkaNode] {
   }
 
   //TODO: rename to toTask?
+  //TODO: запускаться на Task[SpawnNodeActor.Ref[Env]]
+  //TODO: может быть вообще в forkto переименовать.
   def beam[Env: TypeTag, A](
                              task: TaskR[Beam[AkkaNode, Env], A],
                              system: ActorSystem[Nothing],
@@ -81,7 +85,7 @@ package object cluster extends BeamSyntax[AkkaNode] {
     for {
       listing <- askZio[Listing](system.receptionist, replyTo => Receptionist.Find(key, replyTo))
       exit <- Managed.collectAll(
-        listing.serviceInstances(key).map(spawn => Managed.make(askZio[NodeActor.Ref[Env]](spawn, SpawnNodeActor.Spawn[Env]))(tellZio(_, NodeActor.Stop))))
+        listing.serviceInstances(key).map(spawn => Managed.make(askZio[NodeActor.Ref[Env]](spawn, RootNodeActor.CreateNode[Env]))(tellZio(_, NodeActor.Stop))))
         .use { nodes =>
           Task.fromFuture { _ =>
             val master = nodes.find(_.path.address.hasLocalScope).orElse(nodes.headOption).getOrElse {

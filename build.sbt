@@ -39,6 +39,13 @@ lazy val beams = (project in file("beams")).settings(
   )
 )
 
+lazy val shards = (project in file("shards")).settings(
+  commonSettings,
+  libraryDependencies ++= Seq(
+    "org.xerial.larray" %% "larray" % "0.4.1"
+  )
+)
+
 lazy val mapReduceExample = (project in file("examples/map-reduce"))
   .settings(commonSettings)
   .dependsOn(beams)

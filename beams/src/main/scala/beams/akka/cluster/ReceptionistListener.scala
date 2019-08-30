@@ -6,7 +6,6 @@ import akka.actor.typed.scaladsl._
 import beams.akka._
 import scalaz.zio._
 
-// TODO: shutdown queue?
 object ReceptionistListener {
 
   type Ref = ActorRef[Command]

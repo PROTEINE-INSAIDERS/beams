@@ -1,7 +1,7 @@
 import akka.actor.BootstrapSetup
 import akka.actor.setup.ActorSystemSetup
 import beams.akka.cluster._
-import beams.akka.{FixedTimeout, SpawnNodeActor, TimeLimit}
+import beams.akka.{FixedTimeout, RootNodeActor, TimeLimit}
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import scalaz.zio._
 import scalaz.zio.console._
@@ -9,6 +9,7 @@ import scalaz.zio.stream._
 
 import scala.concurrent.duration._
 
+//TODO: Мониторинг регистрации: при регистрации ноды определённого типа мы хотим выполнить на ней определённую программy
 object Main extends App {
   private def setup(port: Int): ActorSystemSetup = ActorSystemSetup(BootstrapSetup(
     ConfigFactory.defaultApplication().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port))))
@@ -23,9 +24,9 @@ object Main extends App {
       system3 <- createActorSystem(setup = setup(25522))
       _ <- registerRoot("node1", system1)
       _ <- registerRoot("node2", system2)
+      _ <- putStrLn("Waiting for 2 nodes...")
+      _ <- rootNodeListing[String](system1).use(Stream.fromQueue(_).run(Sink.ignoreWhile[Set[RootNodeActor.Ref[String]]](_.size < 2)))
       _ <- registerRoot("node3", system3)
-      _ <- putStrLn("Waiting for 3 nodes...")
-      _ <- rootNodesListing[String](system1).use(Stream.fromQueue(_).run(Sink.ignoreWhile[Set[SpawnNodeActor.Ref[String]]](_.size < 3)))
       _ <- putStrLn("Done.")
       _ <- getStrLn
     } yield ()

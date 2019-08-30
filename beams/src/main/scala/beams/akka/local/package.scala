@@ -17,15 +17,15 @@ package object local {
                               name: String = "beams",
                               setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
                               runtime: DefaultRuntime = new DefaultRuntime() {},
-                            ): ActorSystem[SpawnNodeActor.Command[Env]] = {
-    ActorSystem(SpawnNodeActor(env, runtime), name, setup)
+                            ): ActorSystem[RootNodeActor.Command[Env]] = {
+    ActorSystem(RootNodeActor(env, runtime), name, setup)
   }
 
-  def beam[Env, A](task: TaskR[Beam[AkkaNode, Env], A], system: ActorSystem[SpawnNodeActor.Command[Env]], timeout: TimeLimit): Task[A] = {
+  def beam[Env, A](task: TaskR[Beam[AkkaNode, Env], A], system: ActorSystem[RootNodeActor.Command[Env]], timeout: TimeLimit): Task[A] = {
     implicit val t: TimeLimit = timeout
     implicit val s: Scheduler = system.scheduler
 
-    Managed.make(askZio[NodeActor.Ref[Env]](system, SpawnNodeActor.Spawn[Env]))(tellZio(_, NodeActor.Stop)).use { root =>
+    Managed.make(askZio[NodeActor.Ref[Env]](system, RootNodeActor.CreateNode[Env]))(tellZio(_, NodeActor.Stop)).use { root =>
       askZio[Exit[Throwable, A]](root, NodeActor.RunTask(task, _, TimeLimitContainer(timeout, root)))
     }.flatMap(exit => IO.done(exit))
   }
