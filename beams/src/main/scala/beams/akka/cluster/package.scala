@@ -30,6 +30,23 @@ package object cluster extends BeamSyntax[AkkaNode] {
     ActorSystem(SpawnProtocol(), name, setup)
   }
 
+  def createRootNode[Env: TypeTag](
+                                    env: Env,
+                                    system: ActorSystem[SpawnProtocol.Command]
+                                  )
+                                  (
+                                    implicit timeLimit: TimeLimit, runtime: DefaultRuntime
+                                  ): Task[NodeActor.Ref[Env]] = {
+    implicit val s: Scheduler = system.scheduler
+
+    for {
+      key <- Task(serviceKey[Env])
+      root <- askZio[NodeActor.Ref[Env]](system, SpawnProtocol.Spawn(NodeActor(env, runtime), key.id, Props.empty, _))
+          //TODO: register with receptionist
+    } yield root
+  }
+
+  @deprecated("Use createRootNode", "0.1")
   def registerRoot[Env: TypeTag](
                                   env: Env,
                                   system: ActorSystem[SpawnProtocol.Command]
@@ -49,11 +66,11 @@ package object cluster extends BeamSyntax[AkkaNode] {
   //TODO: возможно это следует перенести в интерфейс Beam (или Cluster).
   // с другой стороны конкретно этот интерфейс используется для ожидания готовности кластера перед запуском beam-а.
   def rootNodeListing[Env: TypeTag](
-                                      system: ActorSystem[SpawnProtocol.Command]
-                                    )
+                                     system: ActorSystem[SpawnProtocol.Command]
+                                   )
                                    (
-                                      implicit timeLimit: TimeLimit, runtime: DefaultRuntime
-                                    ): Managed[Throwable, Queue[Set[RootNodeActor.Ref[Env]]]] = {
+                                     implicit timeLimit: TimeLimit, runtime: DefaultRuntime
+                                   ): Managed[Throwable, Queue[Set[RootNodeActor.Ref[Env]]]] = {
     Managed.make {
       implicit val s: Scheduler = system.scheduler
       for {

@@ -21,6 +21,7 @@ object AkkaBeam {
         .fork
 
     override def createNode[Env](a: Env): Task[AkkaNode[Env]] =
+      //TODO: добавить монитор прямо сюда?
       askZio[NodeActor.Ref[Env]](self.ref, NodeActor.CreateNode(a, _)).map(AkkaNode[Env])
 
     override def releaseNode[R](node: AkkaNode[R]): Canceler = ZIO.effectTotal(node.ref.tell(NodeActor.Stop))
