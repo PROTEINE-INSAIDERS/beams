@@ -5,66 +5,33 @@ import java.net.URLEncoder
 import akka.actor.BootstrapSetup
 import akka.actor.setup.ActorSystemSetup
 import akka.actor.typed._
-import akka.actor.typed.receptionist.Receptionist.Listing
 import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
-import akka.actor.typed.scaladsl.AskPattern._
-import akka.util.Timeout
-import beams.{Beam, BeamSyntax}
-import scalaz.zio._
+import beams.BeamSyntax
+import scalaz.zio.{DefaultRuntime, _}
 
 import scala.reflect.runtime.universe._
 
-package object cluster extends BeamSyntax[AkkaNode] {
-  def serviceKey[Env: TypeTag]: ServiceKey[RootNodeActor.Command[Env]] = {
-    val uid = URLEncoder.encode(typeTag[Env].tpe.toString, "UTF-8")
-    ServiceKey[RootNodeActor.Command[Env]](s"beam-$uid")
+//TODO: zio-friendly.
+// переменные окружения должны попадать в Task через ридер.
+//TODO: перенести в akka.
+// не имеет смысла выделять cluster отдельно, т.к. мы не работаем в не кластерном режиме.
+package object cluster extends BeamSyntax[NodeActor.Ref] {
+  //TODO: включение текушего узла в кластер.
+  // 1. Создаём систему акторов.
+  // 2. Cоздаём один или несколько узлов с заданным окружением.
+
+  //TODO: создать и зарегистрировать ноду.
+  def node[R](runtime: Runtime[R]): ZManaged[HasSpawnProtocol with HasReceptionist, Throwable, NodeActor1.Ref[R]] = {
+    ???
   }
 
-  /**
-    * Create beams actor system and join the cluster.
-    */
-  def createActorSystem(
-                         name: String = "beams",
-                         setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup())
-                       ): Task[ActorSystem[SpawnProtocol.Command]] = Task {
-    ActorSystem(SpawnProtocol(), name, setup)
-  }
-
-  def createRootNode[Env: TypeTag](
-                                    env: Env,
-                                    system: ActorSystem[SpawnProtocol.Command]
-                                  )
-                                  (
-                                    implicit timeLimit: TimeLimit, runtime: DefaultRuntime
-                                  ): Task[NodeActor.Ref[Env]] = {
-    implicit val s: Scheduler = system.scheduler
-
-    for {
-      key <- Task(serviceKey[Env])
-      root <- askZio[NodeActor.Ref[Env]](system, SpawnProtocol.Spawn(NodeActor(env, runtime), key.id, Props.empty, _))
-          //TODO: register with receptionist
-    } yield root
-  }
-
-  @deprecated("Use createRootNode", "0.1")
-  def registerRoot[Env: TypeTag](
-                                  env: Env,
-                                  system: ActorSystem[SpawnProtocol.Command]
-                                )
-                                (
-                                  implicit timeLimit: TimeLimit, runtime: DefaultRuntime
-                                ): Task[RootNodeActor.Ref[Env]] = {
-    implicit val s: Scheduler = system.scheduler
-
-    for {
-      key <- Task(serviceKey[Env])
-      root <- askZio[RootNodeActor.Ref[Env]](system, SpawnProtocol.Spawn(RootNodeActor(env, runtime), key.id, Props.empty, _))
-      _ <- tellZio(system.receptionist, Receptionist.Register(key, root))
-    } yield root
-  }
+  //TODO: нужен также метод для подписки
+  def rootNodes[Env: TypeTag](implicit system: ActorSystem[SpawnProtocol.Command]) = ???
 
   //TODO: возможно это следует перенести в интерфейс Beam (или Cluster).
   // с другой стороны конкретно этот интерфейс используется для ожидания готовности кластера перед запуском beam-а.
+  //TODO: Переименовать. Суффикс Listing пришел из названия трейта, которого тут даже нет.
+  /*
   def rootNodeListing[Env: TypeTag](
                                      system: ActorSystem[SpawnProtocol.Command]
                                    )
@@ -86,10 +53,12 @@ package object cluster extends BeamSyntax[AkkaNode] {
       ZIO.effectTotal(listener ! ReceptionistListener.Stop)
     } map (_._1)
   }
+   */
 
   //TODO: rename to toTask?
   //TODO: запускаться на Task[SpawnNodeActor.Ref[Env]]
   //TODO: может быть вообще в forkto переименовать.
+  /*
   def beam[Env: TypeTag, A](
                              task: TaskR[Beam[AkkaNode, Env], A],
                              system: ActorSystem[Nothing],
@@ -116,4 +85,5 @@ package object cluster extends BeamSyntax[AkkaNode] {
     }
       yield result
   }
+   */
 }

@@ -12,16 +12,20 @@ object NodeActor {
 
   final case class CreateNode[Env](env: Env, replyTo: ActorRef[Ref[Env]]) extends Command[Any]
 
+  //TODO: можно добавить оптимизированную версию для локальной системы акторов, где вместо
+  // replyTo будет использоваться Promise.
   final case class RunTask[Env, A](
-                                    task: TaskR[Beam[AkkaNode, Env], A],
+                                    task: TaskR[Beam[Node, Env], A],
                                     replyTo: ActorRef[Exit[Throwable, A]],
                                     timeLimit: TimeLimitContainer
                                   ) extends Command[Env]
 
   object Stop extends Command[Any]
 
-  def apply[Env](env: Env, runtime: DefaultRuntime): Behavior[Command[Env]] = Behaviors.setup { ctx =>
-    val self = AkkaNode[Env](ctx.self)
+  def apply[Env](env: Env, runtime: Runtime[_]): Behavior[Command[Env]] = Behaviors.setup { ctx =>
+    //val self = AkkaNode[Env](ctx.self)
+    val self = ctx.self
+
     Behaviors.receiveMessagePartial {
       case RunTask(task, replyTo, TimeLimitContainer(timeLimit)) =>
         val beam = AkkaBeam[Env](self, env, timeLimit, ctx.system.scheduler)
@@ -36,5 +40,17 @@ object NodeActor {
       case Stop =>
         Behaviors.stopped
     }
+  }
+}
+
+object NodeActor1 {
+  type Ref[+R] = ActorRef[Command[R]]
+
+  sealed trait Command[-R] extends SerializableMessage
+
+  // здесь мы можем предоставить функцию, которая примет контекст актора и создаст R
+  def apply[R](): Behavior[Command[R]] = Behaviors.setup { ctx =>
+    // при запуске процесса нужно создавать дочерний актор, способный принимать сообщение inerrupt.
+    ???
   }
 }

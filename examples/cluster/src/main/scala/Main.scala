@@ -1,33 +1,33 @@
 import akka.actor.BootstrapSetup
 import akka.actor.setup.ActorSystemSetup
-import beams.akka.cluster._
-import beams.akka.{FixedTimeout, RootNodeActor, TimeLimit}
+import akka.actor.typed.scaladsl.ActorContext
+import beams.akka._
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import scalaz.zio._
 import scalaz.zio.console._
-import scalaz.zio.stream._
 
-import scala.concurrent.duration._
-
-//TODO: Мониторинг регистрации: при регистрации ноды определённого типа мы хотим выполнить на ней определённую программy
 object Main extends App {
-  private def setup(port: Int): ActorSystemSetup = ActorSystemSetup(BootstrapSetup(
-    ConfigFactory.defaultApplication().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port))))
 
-  def program: TaskR[Console, Unit] = {
-    implicit val limit: TimeLimit = FixedTimeout(30 seconds)
-    implicit val runtime: DefaultRuntime = this
+  case class CustomEnvironment(
+                                override val actorContext: ActorContext[_],
+                                name: String
+                              ) extends BeamsEnvironment
 
+  def customSystem(env: String, port: Int): Managed[Throwable, BeamsSupervisor.Ref[CustomEnvironment]] =
+    beamsNode(
+      setup = ActorSystemSetup(BootstrapSetup(
+        ConfigFactory.defaultApplication().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port)))),
+      environment = CustomEnvironment(_, env))
+
+  def systems: Managed[Throwable, (BeamsSupervisor.Ref[CustomEnvironment], BeamsSupervisor.Ref[CustomEnvironment], BeamsSupervisor.Ref[CustomEnvironment])] = for {
+    s1 <- customSystem("playground", 25520)
+    s2 <- customSystem("kindergarten", 25521)
+    s3 <- customSystem("garages", 25522)
+  } yield (s1, s2, s3)
+
+  def program: TaskR[Environment, Unit] = systems.use { _ =>
     for {
-      system1 <- createActorSystem(setup = setup(25520))
-      system2 <- createActorSystem(setup = setup(25521))
-      system3 <- createActorSystem(setup = setup(25522))
-      _ <- registerRoot("node1", system1)
-      _ <- registerRoot("node2", system2)
-      _ <- putStrLn("Waiting for 2 nodes...")
-      _ <- rootNodeListing[String](system1).use(Stream.fromQueue(_).run(Sink.ignoreWhile[Set[RootNodeActor.Ref[String]]](_.size < 2)))
-      _ <- registerRoot("node3", system3)
-      _ <- putStrLn("Done.")
+      _ <- putStrLn("Press any key to exit...")
       _ <- getStrLn
     } yield ()
   }

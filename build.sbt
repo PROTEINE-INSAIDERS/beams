@@ -2,7 +2,7 @@ name := "beams"
 
 version := "0.1"
 
-val akkaVersion = "2.6.0-M5"
+val akkaVersion = "2.6.0-M7"
 val zioVersion = "1.0-RC5"
 
 lazy val commonScalacOptions = Seq(

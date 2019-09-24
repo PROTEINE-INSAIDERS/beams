@@ -20,6 +20,10 @@ trait TimeLimit {
   def migratable(): MigratableTimeLimit
 }
 
+trait HasTimeLimit {
+  def timeLimit: TimeLimit
+}
+
 /**
   * Timeout strategy which can be moved between hosts.
   */
