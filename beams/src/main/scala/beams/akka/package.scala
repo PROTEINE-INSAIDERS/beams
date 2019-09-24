@@ -25,18 +25,13 @@ package object akka extends HasSpawnProtocolSyntax with HasReceptionistSyntax {
   /**
     * Create beams actor system.
     */
-  //TODO: рассмотреть возможность передачи startup кода.
-  // Обоснование:
-  // После создания узла нам требуется запускать на нём задачи (возможно, по запросу пользователя).
-  // Запуск задачи Beams (с поддержкой forkTo и друзей) возможен только при наличии контекста актора.
-  // Альтернатива: сделать метод, который позволит запустить задачу в режиме fire and forget.
   def beamsNode[R: TypeTag](
                              systemName: String = "beams",
                              setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
                              environment: ActorContext[BeamsSupervisor.Command[R]] => R
                            ): Managed[Throwable, BeamsSupervisor.Ref[R]] =
     Managed.make(IO {
-      val system = ActorSystem(BeamsSupervisor(environment, IO.unit), systemName, setup)
+      val system = ActorSystem(BeamsSupervisor(environment), systemName, setup)
       val key = serviceKey[R]
       system.receptionist ! Receptionist.Register(key, system)
       system
