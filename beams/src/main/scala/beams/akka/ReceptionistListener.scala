@@ -5,7 +5,7 @@ import akka.actor.typed.receptionist._
 import akka.actor.typed.scaladsl._
 import scalaz.zio._
 
-private object ReceptionistListener {
+private[akka] object ReceptionistListener {
 
   type Ref = ActorRef[Command]
 

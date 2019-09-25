@@ -2,45 +2,28 @@ package beams
 
 import scalaz.zio._
 
-trait Beam[Node[+ _], +Env] {
-  def beam: Beam.Service[Node, Env]
+import scala.reflect.runtime.universe
+import scala.reflect.runtime.universe._
+
+trait Beam[N[+ _]] {
+  def beams: Beam.Service[Any, N]
 }
 
 object Beam {
 
-  trait Service[Node[+ _], +Env] {
-    // Базовая функциональность.
-    // Требуется доступ к часам.
-    def forkTo[R, A](node: Node[R])(task: TaskR[Beam[Node, R], A]): Task[Fiber[Throwable, A]]
+  trait Service[R, N[+ _]] {
+    //TODO: rename
+    def listing[U: TypeTag]: ZManaged[R, Throwable, Queue[Set[N[U]]]]
 
-    def self: Node[Env]
+    //TODO: rename (run at.. whatever)
+    def forkTo[U, A](node: N[U])(task: TaskR[U, A]): TaskR[R, Fiber[Throwable, A]]
 
-    // это не верное определение кластера, потому что env корневых узлов можен не совпадать с Env текущего узла.
-    // def cluster: Task[List[Node[Env]]]
-
-    def createNode[R](r: R): Task[Node[R]]
-
-    def releaseNode[R](node: Node[R]): Canceler
-
-    def env: Env
+    //TODO: implement "fire and forget". Such task can not be canceled. No fiber, no cancelation however.
   }
-
 }
 
-trait BeamSyntax[Node[+ _]] {
-  def forkTo[R, A](node: Node[R])(task: TaskR[Beam[Node, R], A]): TaskR[Beam[Node, Any], Fiber[Throwable, A]] =
-    ZIO.accessM(_.beam.forkTo(node)(task))
+trait BeamsSyntax[N[+ _]] extends Beam.Service[Beam[N], N] {
+  override def listing[U: universe.TypeTag]: ZManaged[Beam[N], Throwable, Queue[Set[N[U]]]] = ZManaged.environment[Beam[N]].flatMap(_.beams.listing)
 
-  def self[Env]: TaskR[Beam[Node, Env], Node[Env]] = ZIO.access(_.beam.self)
-
-  //  def cluster[Env](): TaskR[Beam[Node, Env], List[Node[Env]]] = ZIO.accessM(_.beam.cluster)
-
-  def createNode[R](r: R): TaskR[Beam[Node, Any], Node[R]] = ZIO.accessM(_.beam.createNode(r))
-
-  def releaseNode[R](node: Node[R]): TaskR[Beam[Node, Any], _] = ZIO.accessM(_.beam.releaseNode(node))
-
-  def env[Env]: TaskR[Beam[Node, Env], Env] = ZIO.access(_.beam.env)
-
-  def node[R](r: R): TaskR[Beam[Node, Any], Managed[Throwable, Node[R]]] = ZIO.access(F =>
-    Managed.make(F.beam.createNode(r))(F.beam.releaseNode[R]))
+  override def forkTo[U, A](node: N[U])(task: TaskR[U, A]): TaskR[Beam[N], Fiber[Throwable, A]] = ZIO.accessM(_.beams.forkTo(node)(task))
 }

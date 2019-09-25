@@ -51,7 +51,9 @@ lazy val mapReduceExample = (project in file("examples/map-reduce"))
   .dependsOn(beams)
 
 lazy val clusterExample = (project in file("examples/cluster"))
-  .settings(commonSettings, libraryDependencies ++= Seq("org.scalaz" %% "scalaz-zio-streams" % zioVersion))
+  .settings(commonSettings, libraryDependencies ++= Seq(
+  //  "org.scalaz" %% "scalaz-zio-streams" % zioVersion
+  ))
   .dependsOn(beams)
 
 lazy val examples = (project in file("examples"))

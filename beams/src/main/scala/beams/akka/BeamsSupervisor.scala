@@ -5,7 +5,7 @@ import akka.actor.typed.{ActorRef, Behavior}
 import scalaz.zio._
 import scalaz.zio.internal.{Platform, PlatformLive}
 
-import scala.collection._
+import scala.collection.mutable
 
 /**
   * Top-level actor for a beams cluster's node.
@@ -13,54 +13,86 @@ import scala.collection._
 object BeamsSupervisor {
   type Ref[+R] = ActorRef[Command[R]]
 
+  //TODO: добавить тэги и использовать scala.annotation.switch
   sealed trait Command[-R]
 
   //TODO: Возможно в целях оптимизации следует добавить сообщение, предназначенное для локального запуска задач.
   // replyTo в нём следует заменить call-back функцией.
   // Это позволит избежать создания доплнительных акторов для реализации ask-паттернов.
-  private final case class Exec[R, A](
-                                       task: TaskR[R, A],
-                                       replyTo: ActorRef[Exit[Throwable, A]]
-                                     ) extends Command[R] with SerializableMessage
+  private[akka] final case class Exec[R, A](
+                                             task: TaskR[R, A],
+                                             replyTo: ActorRef[Exit[Throwable, A]]
+                                           ) extends Command[R] with SerializableMessage
 
   private final case class RegisterFiber(fiber: Fiber[_, _], initiator: ActorRef[_], done: Task[Unit] => Unit) extends Command[Any] with NonSerializableMessage
 
+  private final case class RegisterOrphan(orphan: Fiber[_, _], done: Task[Int] => Unit) extends Command[Any] with NonSerializableMessage
+
   private final case class UnregisterFiber(initiator: ActorRef[_]) extends Command[Any] with NonSerializableMessage
 
-  private final case class Submit[R, A](task: TaskR[R, A]) extends Command[R] with SerializableMessage
+  private final case class UnregisterOrphan(id: Int) extends Command[Any] with NonSerializableMessage
+
+  private[akka] final case class Submit[R](task: TaskR[R, Unit]) extends Command[R] with SerializableMessage
+
+  private[akka] final case class AccessActorContext(f: ActorContext[_] => Unit) extends Command[Any] with NonSerializableMessage
 
   private[akka] object Shutdown extends Command[Any] with SerializableMessage
 
+  // scalastyle:off cyclomatic.complexity
   private[akka] def apply[R](environment: ActorContext[Command[R]] => R): Behavior[Command[R]] =
     Behaviors.setup { ctx =>
       val runtime = new Runtime[R] {
         override val Environment: R = environment(ctx)
         override val Platform: Platform = PlatformLive.fromExecutionContext(ctx.executionContext)
       }
+
       val fibers = mutable.HashMap[ActorRef[_], Fiber[_, _]]()
+      val orphans = mutable.HashMap[Int, Fiber[_, _]]()
+
       Behaviors.receiveMessagePartial {
         case Exec(task, replyTo) =>
-          val registerFiber = for {
+          val register = for {
             fiber <- task.fork
             _ <- Task.effectAsync { (cb: Task[Unit] => Unit) => ctx.self.tell(RegisterFiber(fiber, replyTo, cb)) }
           } yield fiber
-          val unregisterFiber = tellZio(ctx.self, UnregisterFiber(replyTo))
-          runtime.unsafeRunAsync(registerFiber.bracket(_ => unregisterFiber)(_.join))(replyTo.tell)
+          val unregister = tellZio(ctx.self, UnregisterFiber(replyTo))
+          runtime.unsafeRunAsync(register.bracket(_ => unregister)(_.join))(replyTo.tell)
           Behaviors.same
         case RegisterFiber(fiber, initiator, done) =>
           fibers += initiator -> fiber
           done(Task.succeed(()))
           Behaviors.same
+        case RegisterOrphan(orphan, done) =>
+          val id = orphans.size
+          orphans += (id -> orphan)
+          done(Task.succeed(id))
+          Behaviors.same
         case UnregisterFiber(initiator) =>
           fibers -= initiator
           Behaviors.same
+        case UnregisterOrphan(id) =>
+          orphans -= id
+          Behaviors.same
+        case AccessActorContext(f) =>
+          f(ctx)
+          Behaviors.same
         case Submit(task) =>
-          runtime.unsafeRunAsync_(task)
+          val register = for {
+            fiber <- task.fork
+            id <- Task.effectAsync { (cb: Task[Int] => Unit) => ctx.self.tell(RegisterOrphan(fiber, cb)) }
+          } yield (fiber, id)
+          val unregister = (id: Int) => tellZio(ctx.self, UnregisterOrphan(id))
+          runtime.unsafeRunAsync_(register.bracket(a => unregister(a._2))(_._1.join))
           Behaviors.same
         case Shutdown =>
           Behaviors.stopped { () =>
-            fibers.values.foreach(fiber => runtime.unsafeRun(fiber.interrupt))
+            def interruptAll(fibers: Iterable[Fiber[_, _]]): Unit = fibers.foreach(fiber => runtime.unsafeRunAsync_(fiber.interrupt))
+
+            interruptAll(fibers.values)
+            interruptAll(orphans.values)
           }
       }
     }
+
+  // scalastyle:on cyclomatic.complexity
 }

@@ -1,34 +1,45 @@
 package beams.akka
 
-import _root_.akka.actor.typed._
+import akka.actor.typed.scaladsl._
 import beams._
 import scalaz.zio._
 
-final case class AkkaBeam[Env](self: Node[Env], env: Env, timeLimit: TimeLimit, scheduler: Scheduler) extends Beam[Node, Env] {
-  override val beam: Beam.Service[Node, Env] = AkkaBeam.Service[Env](self, env)(timeLimit, scheduler)
-}
+import scala.reflect.runtime.universe
 
-object AkkaBeam {
+trait AkkaBeam extends Beam[BeamsSupervisor.Ref] {
+  protected def nodeActor: BeamsSupervisor.Ref[_]
 
-  final case class Service[+Env](override val self: Node[Env], env: Env)
-                                (implicit timeLimit: TimeLimit, scheduler: Scheduler) extends Beam.Service[Node, Env] {
-    override def forkTo[R, A](node: Node[R])
-                             (task: TaskR[Beam[Node, R], A]): Task[Fiber[Throwable, A]] = {
-      /*
-      askZio[Exit[Throwable, A]](
-        node.ref,
-        NodeActor.RunTask(task, _, TimeLimitContainer(timeLimit, node.ref)))
-        .flatMap(exit => Task.done(exit))
-        .fork
-       */
-      ???
+  override val beams: Beam.Service[Any, BeamsSupervisor.Ref] = new Beam.Service[Any, BeamsSupervisor.Ref] {
+    private def onActorContex(f: ActorContext[_] => Unit): Unit = {
+      nodeActor ! BeamsSupervisor.AccessActorContext { ctx => f(ctx) }
     }
 
-    override def createNode[Env](a: Env): Task[Node[Env]] = ???
-      //TODO: добавить монитор прямо сюда?
-      //askZio[NodeActor.Ref[Env]](self.ref, NodeActor.CreateNode(a, _))//.map(AkkaNode[Env])
+    private def withActorContext[A](f: ActorContext[_] => A): Task[A] = Task.effectAsync { (cb: Task[A] => Unit) =>
+      nodeActor ! BeamsSupervisor.AccessActorContext { ctx =>
+        cb(Task.succeed(f(ctx)))
+      }
+    }
 
-    override def releaseNode[R](node: Node[R]): Canceler = ZIO.effectTotal(node.ref.tell(NodeActor.Stop))
+    override def listing[U: universe.TypeTag]: ZManaged[Any, Throwable, Queue[Set[BeamsSupervisor.Ref[U]]]] = Managed.make {
+      for {
+        queue <- scalaz.zio.Queue.unbounded[Set[BeamsSupervisor.Ref[U]]]
+        runtime <- ZIO.runtime[Any]
+        listener <- withActorContext(_.spawnAnonymous(ReceptionistListener(serviceKey[U], queue, runtime)))
+      } yield (queue, listener)
+    } { case (_, listener) => tellZio(listener, ReceptionistListener.Stop)
+    }.map(_._1)
+
+    override def forkTo[U, A](node: BeamsSupervisor.Ref[U])(task: TaskR[U, A]): TaskR[Any, Fiber[Throwable, A]] = for {
+      result <- Task.effectAsyncInterrupt { (cb: Task[A] => Unit) =>
+        onActorContex { ctx =>
+          ctx.spawnAnonymous {
+            HomunculusLoxodontus[BeamsSupervisor.Command[U], Exit[Throwable, A]](node, replyTo => BeamsSupervisor.Exec(task, replyTo), r => cb(ZIO.done(r)))
+          }
+          ()
+        }
+        //TODO: implement interruption
+        Left(Task.unit)
+      }.fork
+    } yield result
   }
-
 }

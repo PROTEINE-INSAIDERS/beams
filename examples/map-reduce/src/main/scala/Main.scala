@@ -1,5 +1,5 @@
 import beams._
-import beams.akka.local.{beam, createActorSystem}
+import beams.akka._
 import beams.akka.FixedTimeout
 import scalaz.zio._
 
