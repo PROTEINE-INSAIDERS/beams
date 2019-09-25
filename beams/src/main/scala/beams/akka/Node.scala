@@ -25,7 +25,7 @@ object Node {
                                            ) extends Command[R] with SerializableMessage
 
   //TODO: Mожно обойтись без этого сообщения. Для этого достаточно создавать фиберы через unsafeRun.
-  // Отмену регистрации в любом случае придётся делать через сообщения, чтобы обеспечить потокобезопасность.  
+  // Отмену регистрации в любом случае придётся делать через сообщения, чтобы обеспечить потокобезопасность.
   private final case class RegisterFiber(fiber: Fiber[_, _], initiator: ActorRef[_], done: Task[Unit] => Unit) extends Command[Any] with NonSerializableMessage
 
   private final case class RegisterOrphan(orphan: Fiber[_, _], done: Task[Int] => Unit) extends Command[Any] with NonSerializableMessage
@@ -40,7 +40,9 @@ object Node {
 
   private[akka] final case class Cancel(initiator: ActorRef[_]) extends Command[Any] with SerializableMessage
 
-  private[akka] object Stop extends Command[Any] with SerializableMessage
+  //TODO: need to implement gracefull shutdown (wait till all tasks finished or canceled shut down node, invoke call-back function).
+  // No remote shutdown required
+  private[akka] object Stop extends Command[Any] with NonSerializableMessage
 
   // scalastyle:off cyclomatic.complexity
   private[akka] def apply[R](environment: ActorContext[Command[R]] => R): Behavior[Command[R]] =
@@ -95,6 +97,10 @@ object Node {
           }
           Behaviors.same
         case Stop =>
+          //TODO: возможно, некоторым фиберам для завершения работы потребуется обратиться к ноде,
+          // поэтому прерывать их надо до завершения работы ноды.
+          // Можно реализовать двухфазное отключение: в первой фазе нода просто перестаёт принимать новые задачи,
+          // но продолжает обслуживать еще существующие, когда все задачи выполнены, нода переходит в состояние Behaviors.stopped.
           Behaviors.stopped { () =>
             def interruptAll(fibers: Iterable[Fiber[_, _]]): Unit = fibers.foreach(fiber => runtime.unsafeRunAsync_(fiber.interrupt))
 

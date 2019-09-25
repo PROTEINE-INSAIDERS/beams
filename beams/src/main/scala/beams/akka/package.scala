@@ -7,6 +7,7 @@ import _root_.akka.actor.setup._
 import _root_.akka.actor.typed._
 import _root_.akka.actor.typed.receptionist._
 import _root_.akka.actor.typed.scaladsl._
+import _root_.akka.cluster.typed._
 import scalaz.zio._
 
 import scala.reflect.runtime.universe._
@@ -21,12 +22,19 @@ package object akka extends BeamsSyntax[Node.Ref] {
                         setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
                         environment: ActorContext[Node.Command[R]] => R
                       ): Managed[Throwable, Node.Ref[R]] =
-    Managed.make(IO {
-      val system = ActorSystem(Node(environment), systemName, setup)
-      val key = serviceKey[R]
-      system.receptionist ! Receptionist.Register(key, system)
-      system
-    })(tellZio(_, Node.Stop))
+    Managed.make {
+      IO {
+        val system = ActorSystem(Node(environment), systemName, setup)
+        val key = serviceKey[R]
+        system.receptionist ! Receptionist.Register(key, system)
+        system
+      }
+    } { system =>
+      tellZio(system, Node.Stop) *> IO.effectTotal {
+        val cluster = Cluster(system)
+        cluster.manager ! Leave(cluster.selfMember.address)
+      }
+    }
 
   def serviceKey[R: TypeTag]: ServiceKey[Node.Command[R]] = {
     val uid = URLEncoder.encode(typeTag[R].tpe.toString, "UTF-8")
