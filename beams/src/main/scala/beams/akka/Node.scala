@@ -1,16 +1,16 @@
 package beams.akka
 
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed._
+import akka.actor.typed.scaladsl._
 import scalaz.zio._
-import scalaz.zio.internal.{Platform, PlatformLive}
+import scalaz.zio.internal._
 
 import scala.collection.mutable
 
 /**
   * Top-level actor for a beams cluster's node.
   */
-object BeamsSupervisor {
+object Node {
   type Ref[+R] = ActorRef[Command[R]]
 
   //TODO: добавить тэги и использовать scala.annotation.switch
@@ -24,6 +24,8 @@ object BeamsSupervisor {
                                              replyTo: ActorRef[Exit[Throwable, A]]
                                            ) extends Command[R] with SerializableMessage
 
+  //TODO: Mожно обойтись без этого сообщения. Для этого достаточно создавать фиберы через unsafeRun.
+  // Отмену регистрации в любом случае придётся делать через сообщения, чтобы обеспечить потокобезопасность.  
   private final case class RegisterFiber(fiber: Fiber[_, _], initiator: ActorRef[_], done: Task[Unit] => Unit) extends Command[Any] with NonSerializableMessage
 
   private final case class RegisterOrphan(orphan: Fiber[_, _], done: Task[Int] => Unit) extends Command[Any] with NonSerializableMessage
@@ -32,11 +34,13 @@ object BeamsSupervisor {
 
   private final case class UnregisterOrphan(id: Int) extends Command[Any] with NonSerializableMessage
 
-  private[akka] final case class Submit[R](task: TaskR[R, Unit]) extends Command[R] with SerializableMessage
-
   private[akka] final case class AccessActorContext(f: ActorContext[_] => Unit) extends Command[Any] with NonSerializableMessage
 
-  private[akka] object Shutdown extends Command[Any] with SerializableMessage
+  private[akka] final case class Submit[R](task: TaskR[R, Unit]) extends Command[R] with SerializableMessage
+
+  private[akka] final case class Cancel(initiator: ActorRef[_]) extends Command[Any] with SerializableMessage
+
+  private[akka] object Stop extends Command[Any] with SerializableMessage
 
   // scalastyle:off cyclomatic.complexity
   private[akka] def apply[R](environment: ActorContext[Command[R]] => R): Behavior[Command[R]] =
@@ -84,7 +88,13 @@ object BeamsSupervisor {
           val unregister = (id: Int) => tellZio(ctx.self, UnregisterOrphan(id))
           runtime.unsafeRunAsync_(register.bracket(a => unregister(a._2))(_._1.join))
           Behaviors.same
-        case Shutdown =>
+        case Cancel(initiator) =>
+          fibers.get(initiator).foreach { fiber =>
+            runtime.unsafeRun(fiber.interrupt)
+            fibers -= initiator
+          }
+          Behaviors.same
+        case Stop =>
           Behaviors.stopped { () =>
             def interruptAll(fibers: Iterable[Fiber[_, _]]): Unit = fibers.foreach(fiber => runtime.unsafeRunAsync_(fiber.interrupt))
 

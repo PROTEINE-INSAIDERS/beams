@@ -4,42 +4,43 @@ import akka.actor.typed.scaladsl._
 import beams._
 import scalaz.zio._
 
-import scala.reflect.runtime.universe
+import scala.reflect.runtime.universe._
 
-trait AkkaBeam extends Beam[BeamsSupervisor.Ref] {
-  protected def nodeActor: BeamsSupervisor.Ref[_]
+trait AkkaBeam extends Beam[Node.Ref] {
+  protected def nodeActor: Node.Ref[_]
 
-  override val beams: Beam.Service[Any, BeamsSupervisor.Ref] = new Beam.Service[Any, BeamsSupervisor.Ref] {
+  override val beams: Beam.Service[Any, Node.Ref] = new Beam.Service[Any, Node.Ref] {
     private def onActorContex(f: ActorContext[_] => Unit): Unit = {
-      nodeActor ! BeamsSupervisor.AccessActorContext { ctx => f(ctx) }
+      nodeActor ! Node.AccessActorContext { ctx => f(ctx) }
     }
 
     private def withActorContext[A](f: ActorContext[_] => A): Task[A] = Task.effectAsync { (cb: Task[A] => Unit) =>
-      nodeActor ! BeamsSupervisor.AccessActorContext { ctx =>
-        cb(Task.succeed(f(ctx)))
+      nodeActor ! Node.AccessActorContext { ctx =>
+        cb(Task(f(ctx)))
       }
     }
 
-    override def listing[U: universe.TypeTag]: ZManaged[Any, Throwable, Queue[Set[BeamsSupervisor.Ref[U]]]] = Managed.make {
+    override def listing[U: TypeTag]: ZManaged[Any, Throwable, Queue[Set[Node.Ref[U]]]] = Managed.make {
       for {
-        queue <- scalaz.zio.Queue.unbounded[Set[BeamsSupervisor.Ref[U]]]
+        queue <- scalaz.zio.Queue.unbounded[Set[Node.Ref[U]]]
         runtime <- ZIO.runtime[Any]
         listener <- withActorContext(_.spawnAnonymous(ReceptionistListener(serviceKey[U], queue, runtime)))
       } yield (queue, listener)
     } { case (_, listener) => tellZio(listener, ReceptionistListener.Stop)
     }.map(_._1)
 
-    override def forkTo[U, A](node: BeamsSupervisor.Ref[U])(task: TaskR[U, A]): TaskR[Any, Fiber[Throwable, A]] = for {
+    override def runAt[U, A](node: Node.Ref[U])(task: TaskR[U, A]): TaskR[Any, A] = for {
+      promise <- Promise.make[Nothing, HomunculusLoxodontus.Ref]
+      runtime <- ZIO.runtime[Any]
       result <- Task.effectAsyncInterrupt { (cb: Task[A] => Unit) =>
         onActorContex { ctx =>
-          ctx.spawnAnonymous {
-            HomunculusLoxodontus[BeamsSupervisor.Command[U], Exit[Throwable, A]](node, replyTo => BeamsSupervisor.Exec(task, replyTo), r => cb(ZIO.done(r)))
-          }
+          //TODO: more safety??
+          val homunculusLoxodontus = ctx.spawnAnonymous(HomunculusLoxodontus(node, task, cb))
+          runtime.unsafeRun(promise.succeed(homunculusLoxodontus))
           ()
         }
-        //TODO: implement interruption
-        Left(Task.unit)
-      }.fork
+        Left(promise.await.flatMap(homunculusLoxodontus => tellZio(homunculusLoxodontus, HomunculusLoxodontus.Cancel)))
+      }
     } yield result
   }
 }

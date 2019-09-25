@@ -12,28 +12,28 @@ import scalaz.zio._
 import scala.reflect.runtime.universe._
 
 //TODO: factor out cluster interface abstraction (where possible)
-package object akka extends HasSpawnProtocolSyntax with HasReceptionistSyntax with ActorContextAccessorSyntax with BeamsSyntax[BeamsSupervisor.Ref] {
+package object akka extends BeamsSyntax[Node.Ref] {
   /**
     * Create beams actor system.
     */
   def node[R: TypeTag](
                         systemName: String = "beams",
                         setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
-                        environment: ActorContext[BeamsSupervisor.Command[R]] => R
-                      ): Managed[Throwable, BeamsSupervisor.Ref[R]] =
+                        environment: ActorContext[Node.Command[R]] => R
+                      ): Managed[Throwable, Node.Ref[R]] =
     Managed.make(IO {
-      val system = ActorSystem(BeamsSupervisor(environment), systemName, setup)
+      val system = ActorSystem(Node(environment), systemName, setup)
       val key = serviceKey[R]
       system.receptionist ! Receptionist.Register(key, system)
       system
-    })(tellZio(_, BeamsSupervisor.Shutdown))
+    })(tellZio(_, Node.Stop))
 
-  def serviceKey[R: TypeTag]: ServiceKey[BeamsSupervisor.Command[R]] = {
+  def serviceKey[R: TypeTag]: ServiceKey[Node.Command[R]] = {
     val uid = URLEncoder.encode(typeTag[R].tpe.toString, "UTF-8")
-    ServiceKey[BeamsSupervisor.Command[R]](s"beams-node-$uid")
+    ServiceKey[Node.Command[R]](s"beams-node-$uid")
   }
 
-  def submit[R](node: BeamsSupervisor.Ref[R], task: TaskR[R, Unit]): UIO[Unit] = tellZio(node, BeamsSupervisor.Submit(task))
+  def submit[R](node: Node.Ref[R], task: TaskR[R, Unit]): UIO[Unit] = tellZio(node, Node.Submit(task))
 
   private[akka] def tellZio[A](ref: ActorRef[A], a: A): UIO[Unit] = ZIO.effectTotal(ref.tell(a))
 }
