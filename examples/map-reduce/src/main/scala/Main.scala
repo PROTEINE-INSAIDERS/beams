@@ -1,5 +1,5 @@
 import beams._
-import beams.akka.local.{beam, createActorSystem}
+import beams.akka._
 import beams.akka.FixedTimeout
 import scalaz.zio._
 
@@ -32,7 +32,7 @@ object Main {
     }
     data
   }
-
+/*
   def mapReduce[N[+ _], V1, K2, V2](
                                      source: Source[V1],
                                      map: V1 => Iterable[(K2, V2)],
@@ -87,8 +87,9 @@ object Main {
       }
     } yield result
   }
-
+*/
   def main(args: Array[String]): Unit = {
+    /*
     val system = createActorSystem(env = ())
     val runtime = new DefaultRuntime {}
 
@@ -130,6 +131,6 @@ object Main {
     println("======== res")
     r.toList.sortBy(_._2).foreach(println)
 
-    system.terminate()
+    system.terminate()*/
   }
 }

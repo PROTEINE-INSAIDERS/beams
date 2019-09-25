@@ -2,25 +2,28 @@ package beams
 
 import scalaz.zio._
 
-trait Beam[Node[+ _], +Env] {
-  def beam: Beam.Service[Node, Env]
+import scala.reflect.runtime.universe
+import scala.reflect.runtime.universe._
+
+trait Beam[N[+ _]] {
+  def beams: Beam.Service[Any, N]
 }
 
 object Beam {
 
-  trait Service[Node[+ _], +Env] {
-    def forkTo[R, A](node: Node[R])(task: TaskR[Beam[Node, R], A]): Task[Fiber[Throwable, A]]
+  trait Service[R, N[+ _]] {
+    //TODO: rename
+    def listing[U: TypeTag]: ZManaged[R, Throwable, Queue[Set[N[U]]]]
 
-    def self: Node[Env]
+    //TODO: rename (run at.. whatever)
+    def forkTo[U, A](node: N[U])(task: TaskR[U, A]): TaskR[R, Fiber[Throwable, A]]
 
-    // это не верное определение кластера, потому что env корневых узлов можен не совпадать с Env текущего узла.
-    // def cluster: Task[List[Node[Env]]]
-
-    def createNode[R](r: R): Task[Node[R]]
-
-    def releaseNode[R](node: Node[R]): Canceler
-
-    def env: Env
+    //TODO: implement "fire and forget". Such task can not be canceled. No fiber, no cancelation however.
   }
+}
 
+trait BeamsSyntax[N[+ _]] extends Beam.Service[Beam[N], N] {
+  override def listing[U: universe.TypeTag]: ZManaged[Beam[N], Throwable, Queue[Set[N[U]]]] = ZManaged.environment[Beam[N]].flatMap(_.beams.listing)
+
+  override def forkTo[U, A](node: N[U])(task: TaskR[U, A]): TaskR[Beam[N], Fiber[Throwable, A]] = ZIO.accessM(_.beams.forkTo(node)(task))
 }
