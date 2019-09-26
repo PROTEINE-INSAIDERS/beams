@@ -73,8 +73,8 @@ object Main extends App {
           * current program to the remote node. But it possible to create closure which captures current execution state
           * and submit it to remote node.
           *
-          * You should be careful not to capture to much object or something which can not be serialized. Same rule
-          * applies to any distributed framework which relies on closure serialization, such as Spark, for example.
+          * You should be careful not to capture too much state or something which can not be serialized. Same rule
+          * applies to any distributed framework relying on closure serialization, such as Spark, for example.
           *
           * Please note, that [[beams.BeamsSyntax.submitTo]] will run remote process in fire-and-forget fashion.
           * You will not be able to interrupt remote task nor obtain it's result. Use [[beams.BeamsSyntax.runAt]] for
