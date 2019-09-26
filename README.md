@@ -6,7 +6,7 @@ distributed programs and uses [Akka](https://akka.io/) to run them in distribute
 
 Approaches taken in Beams for distributed programming are similar to [Unison's](https://github.com/unisonweb/unison) 
 ones. Unlike Unison, Beams does not support strong code mobility. However, in presence of higher order functions and
-closure serialization, strong code mobility can be [implemented](http://www.dcs.gla.ac.uk/~trinder/papers/strongm.pdf)
+closure serialization, strong code mobility [can be implemented](http://www.dcs.gla.ac.uk/~trinder/papers/strongm.pdf)
 via continuations. 
 
-See [hello-world](\examples\hello-world\src\main\scala\Main.scala) for introductory example.
+See [hello-world](examples/hello-world/src/main/scala/Main.scala) for introductory example.
