@@ -7,24 +7,17 @@ import scalaz.zio._
 
 private[akka] object ReceptionistListener {
 
-  type Ref = ActorRef[Command]
-
-  sealed trait Command extends NonSerializableMessage
-
-  final case class Listing[T](listing: Receptionist.Listing) extends Command
-
-  object Stop extends Command
+  object Stop extends NonSerializableMessage
 
   def apply[T](
                 key: ServiceKey[T],
                 queue: Queue[Set[ActorRef[T]]],
                 runtime: Runtime[_]
-              ): Behavior[Command] =
+              ): Behavior[Any] =
     Behaviors.setup { ctx =>
-      val subscriber = ctx.messageAdapter[Receptionist.Listing](Listing(_))
-      ctx.system.receptionist ! Receptionist.subscribe(key, subscriber)
+      ctx.system.receptionist ! Receptionist.Subscribe(key, ctx.self)
       Behaviors.receiveMessagePartial {
-        case Listing(key.Listing(services)) =>
+        case key.Listing(services) =>
           runtime.unsafeRun(queue.offer(services))
           Behaviors.same
         case Stop =>

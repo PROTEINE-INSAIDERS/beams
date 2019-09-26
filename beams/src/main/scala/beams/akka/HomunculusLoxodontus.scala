@@ -2,19 +2,21 @@ package beams.akka
 
 import akka.actor.typed._
 import akka.actor.typed.scaladsl._
+import scalaz.zio._
 
 private[akka] object HomunculusLoxodontus {
-  // type Ref[-B] = ActorRef[Command[B]]
+  type Ref = ActorRef[Any]
 
-  // sealed trait Command[+B] extends SerializableMessage
+  object Cancel extends NonSerializableMessage
 
-  // final case class Done[B](a: B) extends Command[B]
-
-  def apply[A, B](ref: ActorRef[A], replyTo: ActorRef[B] => A, cb: B => Unit): Behavior[Any] = Behaviors.setup { ctx =>
-    ref ! replyTo(ctx.self)
+  def apply[R, A](node: AkkaNode.Ref[R], task: TaskR[R, A], cb: Task[A] => Unit): Behavior[Any] = Behaviors.setup { ctx =>
+    node ! AkkaNode.Exec(task, ctx.self)
     Behaviors.receiveMessagePartial {
-      case a =>
-        cb(a.asInstanceOf[B])
+      case Cancel =>
+        node ! AkkaNode.Cancel(ctx.self)
+        Behaviors.stopped
+      case ResultWrapper(r) =>
+        cb(ZIO.done(r.asInstanceOf[Exit[Throwable, A]]))
         Behaviors.stopped
     }
   }

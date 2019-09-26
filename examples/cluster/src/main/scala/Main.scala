@@ -6,53 +6,51 @@ import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import scalaz.zio._
 import scalaz.zio.console._
 
+import scala.reflect.runtime.universe
+
 object Main extends App {
 
-  case class MyEnvironment(
-                            override val nodeActor: BeamsSupervisor.Ref[_],
-                            name: String
-                          ) extends AkkaBeam with Console.Live
+  class Playground(ctx: AkkaNode.Ctx[_]) extends AkkaBeam with Console.Live {
+    override val nodeActor: AkkaNode.Ref[_] = ctx.self
+  }
 
-  def myNode(env: String, port: Int): Managed[Throwable, BeamsSupervisor.Ref[MyEnvironment]] =
+  class Kindergarten(ctx: AkkaNode.Ctx[_]) extends AkkaBeam with Console.Live {
+    override val nodeActor: AkkaNode.Ref[_] = ctx.self
+  }
+
+  class Garages(ctx: AkkaNode.Ctx[_]) extends AkkaBeam with Console.Live {
+    override val nodeActor: AkkaNode.Ref[_] = ctx.self
+  }
+
+  def myNode[R: universe.TypeTag](f: ActorContext[AkkaNode.Command[R]] => R, port: Int): Managed[Throwable, AkkaNode.Ref[R]] =
     node(
       setup = ActorSystemSetup(BootstrapSetup(
         ConfigFactory.defaultApplication().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port)))),
-      environment = { ctx: ActorContext[BeamsSupervisor.Command[MyEnvironment]] => MyEnvironment(ctx.self, env) })
+      environment = { ctx: ActorContext[AkkaNode.Command[R]] => f(ctx) })
 
-  def myNodes: Managed[Throwable, (BeamsSupervisor.Ref[MyEnvironment], BeamsSupervisor.Ref[MyEnvironment], BeamsSupervisor.Ref[MyEnvironment])] = for {
-    s1 <- myNode("playground", 25520)
-    s2 <- myNode("kindergarten", 25521)
-    s3 <- myNode("garages", 25522)
+  def myNodes: Managed[Throwable, (AkkaNode.Ref[Playground], AkkaNode.Ref[Kindergarten], AkkaNode.Ref[Garages])] = for {
+    // scalastyle:off magic.number
+    s1 <- myNode(new Playground(_), 25520)
+    s2 <- myNode(new Kindergarten(_), 25521)
+    s3 <- myNode(new Garages(_), 25522)
+    // scalastyle:on magic.number
   } yield (s1, s2, s3)
 
-  def beam: TaskR[MyEnvironment, Unit] = for {
-    _ <- putStrLn("hello from beam")
-    nodes <- listing[MyEnvironment].use { queue: Queue[Set[BeamsSupervisor.Ref[MyEnvironment]]] =>
-      def next: ZIO[Any, Throwable, Set[BeamsSupervisor.Ref[MyEnvironment]]] = queue.take.flatMap(set =>
-        if (set.size < 3)
-          next
-        else
-          ZIO.succeed(set))
+  def printEnv[R <: Console]: ZIO[R, Nothing, Unit] = ZIO.environment[R].flatMap { e => putStrLn(s"running at $e") }
 
-      next
-    }
-    _ <- putStrLn(s"all nodes up: $nodes")
-    // name <- ZIO.access[MyEnvironment](_.name)
-    // _ <- putStrLn(s"running at $name")
-    fibers <- ZIO.foreach(nodes) { node =>
-      forkTo(node) {
-        for {
-          name <- ZIO.access[MyEnvironment](_.name)
-          _ <- putStrLn(s"running at $name")
-        } yield ()
-      }
-    }
-    _ <- Fiber.joinAll(fibers)
+  def beam: TaskR[AkkaBeam with Console, Unit] = for {
+    _ <- putStrLn("hello from beam")
+    playground <- anyNode[Playground]
+    kindergarten <- anyNode[Kindergarten]
+    garages <- anyNode[Garages]
+    _ <- runAt(playground)(printEnv)
+    _ <- runAt(kindergarten)(printEnv)
+    _ <- runAt(garages)(printEnv)
   } yield ()
 
   def program: TaskR[Environment, Unit] = myNodes.use { case (n1, _, _) =>
     for {
-      _ <- submit(n1, beam)
+      _ <- submitTo(n1)(beam)
       _ <- putStrLn("Press any key to exit...")
       _ <- getStrLn
       _ <- putStrLn("exiting...")

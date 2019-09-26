@@ -1,17 +1,19 @@
 package beams.akka
 
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed._
+import akka.actor.typed.scaladsl._
 import scalaz.zio._
-import scalaz.zio.internal.{Platform, PlatformLive}
+import scalaz.zio.internal._
 
 import scala.collection.mutable
 
 /**
   * Top-level actor for a beams cluster's node.
   */
-object BeamsSupervisor {
+object AkkaNode {
   type Ref[+R] = ActorRef[Command[R]]
+
+  type Ctx[R] = ActorContext[Command[R]]
 
   //TODO: добавить тэги и использовать scala.annotation.switch
   sealed trait Command[-R]
@@ -21,9 +23,11 @@ object BeamsSupervisor {
   // Это позволит избежать создания доплнительных акторов для реализации ask-паттернов.
   private[akka] final case class Exec[R, A](
                                              task: TaskR[R, A],
-                                             replyTo: ActorRef[Exit[Throwable, A]]
+                                             replyTo: ActorRef[ResultWrapper[A]]
                                            ) extends Command[R] with SerializableMessage
 
+  //TODO: Mожно обойтись без этого сообщения. Для этого достаточно создавать фиберы через unsafeRun.
+  // Отмену регистрации в любом случае придётся делать через сообщения, чтобы обеспечить потокобезопасность.
   private final case class RegisterFiber(fiber: Fiber[_, _], initiator: ActorRef[_], done: Task[Unit] => Unit) extends Command[Any] with NonSerializableMessage
 
   private final case class RegisterOrphan(orphan: Fiber[_, _], done: Task[Int] => Unit) extends Command[Any] with NonSerializableMessage
@@ -32,11 +36,15 @@ object BeamsSupervisor {
 
   private final case class UnregisterOrphan(id: Int) extends Command[Any] with NonSerializableMessage
 
-  private[akka] final case class Submit[R](task: TaskR[R, Unit]) extends Command[R] with SerializableMessage
-
   private[akka] final case class AccessActorContext(f: ActorContext[_] => Unit) extends Command[Any] with NonSerializableMessage
 
-  private[akka] object Shutdown extends Command[Any] with SerializableMessage
+  private[akka] final case class Submit[R](task: TaskR[R, Any]) extends Command[R] with SerializableMessage
+
+  private[akka] final case class Cancel(initiator: ActorRef[_]) extends Command[Any] with SerializableMessage
+
+  //TODO: need to implement gracefull shutdown (wait till all tasks finished or canceled shut down node, invoke call-back function).
+  // No remote shutdown required
+  private[akka] object Stop extends Command[Any] with NonSerializableMessage
 
   // scalastyle:off cyclomatic.complexity
   private[akka] def apply[R](environment: ActorContext[Command[R]] => R): Behavior[Command[R]] =
@@ -56,7 +64,7 @@ object BeamsSupervisor {
             _ <- Task.effectAsync { (cb: Task[Unit] => Unit) => ctx.self.tell(RegisterFiber(fiber, replyTo, cb)) }
           } yield fiber
           val unregister = tellZio(ctx.self, UnregisterFiber(replyTo))
-          runtime.unsafeRunAsync(register.bracket(_ => unregister)(_.join))(replyTo.tell)
+          runtime.unsafeRunAsync(register.bracket(_ => unregister)(_.join))(r => replyTo.tell(ResultWrapper(r)))
           Behaviors.same
         case RegisterFiber(fiber, initiator, done) =>
           fibers += initiator -> fiber
@@ -82,9 +90,19 @@ object BeamsSupervisor {
             id <- Task.effectAsync { (cb: Task[Int] => Unit) => ctx.self.tell(RegisterOrphan(fiber, cb)) }
           } yield (fiber, id)
           val unregister = (id: Int) => tellZio(ctx.self, UnregisterOrphan(id))
-          runtime.unsafeRunAsync_(register.bracket(a => unregister(a._2))(_._1.join))
+          runtime.unsafeRunAsync_(register.bracket { case (_, id) => unregister(id) } { case (fiber, _) => fiber.join })
           Behaviors.same
-        case Shutdown =>
+        case Cancel(initiator) =>
+          fibers.get(initiator).foreach { fiber =>
+            runtime.unsafeRun(fiber.interrupt)
+            fibers -= initiator
+          }
+          Behaviors.same
+        case Stop =>
+          //TODO: возможно, некоторым фиберам для завершения работы потребуется обратиться к ноде,
+          // поэтому прерывать их надо до завершения работы ноды.
+          // Можно реализовать двухфазное отключение: в первой фазе нода просто перестаёт принимать новые задачи,
+          // но продолжает обслуживать еще существующие, когда все задачи выполнены, нода переходит в состояние Behaviors.stopped.
           Behaviors.stopped { () =>
             def interruptAll(fibers: Iterable[Fiber[_, _]]): Unit = fibers.foreach(fiber => runtime.unsafeRunAsync_(fiber.interrupt))
 
