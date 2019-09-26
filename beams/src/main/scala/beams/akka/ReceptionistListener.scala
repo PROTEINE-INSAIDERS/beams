@@ -15,7 +15,7 @@ private[akka] object ReceptionistListener {
                 runtime: Runtime[_]
               ): Behavior[Any] =
     Behaviors.setup { ctx =>
-      ctx.system.receptionist ! Receptionist.subscribe(key, ctx.self)
+      ctx.system.receptionist ! Receptionist.Subscribe(key, ctx.self)
       Behaviors.receiveMessagePartial {
         case key.Listing(services) =>
           runtime.unsafeRun(queue.offer(services))
