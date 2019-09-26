@@ -9,13 +9,13 @@ private[akka] object HomunculusLoxodontus {
 
   object Cancel extends NonSerializableMessage
 
-  def apply[R, A](node: Node.Ref[R], task: TaskR[R, A], cb: Task[A] => Unit): Behavior[Any] = Behaviors.setup { ctx =>
-    node ! Node.Exec(task, ctx.self)
+  def apply[R, A](node: AkkaNode.Ref[R], task: TaskR[R, A], cb: Task[A] => Unit): Behavior[Any] = Behaviors.setup { ctx =>
+    node ! AkkaNode.Exec(task, ctx.self)
     Behaviors.receiveMessagePartial {
       case Cancel =>
-        node ! Node.Cancel(ctx.self)
+        node ! AkkaNode.Cancel(ctx.self)
         Behaviors.stopped
-      case r: Exit[_, _] =>
+      case ResultWrapper(r) =>
         cb(ZIO.done(r.asInstanceOf[Exit[Throwable, A]]))
         Behaviors.stopped
     }

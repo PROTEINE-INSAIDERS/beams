@@ -6,30 +6,30 @@ import scalaz.zio._
 
 import scala.reflect.runtime.universe._
 
-trait AkkaBeam extends Beam[Node.Ref] {
-  protected def nodeActor: Node.Ref[_]
+trait AkkaBeam extends Beam[AkkaNode.Ref] {
+  protected def nodeActor: AkkaNode.Ref[_]
 
-  override val beams: Beam.Service[Any, Node.Ref] = new Beam.Service[Any, Node.Ref] {
+  override val beams: Beam.Service[Any, AkkaNode.Ref] = new Beam.Service[Any, AkkaNode.Ref] {
     private def onActorContex(f: ActorContext[_] => Unit): Unit = {
-      nodeActor ! Node.AccessActorContext { ctx => f(ctx) }
+      nodeActor ! AkkaNode.AccessActorContext { ctx => f(ctx) }
     }
 
     private def withActorContext[A](f: ActorContext[_] => A): Task[A] = Task.effectAsync { (cb: Task[A] => Unit) =>
-      nodeActor ! Node.AccessActorContext { ctx =>
+      nodeActor ! AkkaNode.AccessActorContext { ctx =>
         cb(Task(f(ctx)))
       }
     }
 
-    override def listing[U: TypeTag]: ZManaged[Any, Throwable, Queue[Set[Node.Ref[U]]]] = Managed.make {
+    override def nodeListing[U: TypeTag]: ZManaged[Any, Throwable, Queue[Set[AkkaNode.Ref[U]]]] = Managed.make {
       for {
-        queue <- scalaz.zio.Queue.unbounded[Set[Node.Ref[U]]]
+        queue <- scalaz.zio.Queue.unbounded[Set[AkkaNode.Ref[U]]]
         runtime <- ZIO.runtime[Any]
         listener <- withActorContext(_.spawnAnonymous(ReceptionistListener(serviceKey[U], queue, runtime)))
       } yield (queue, listener)
     } { case (_, listener) => tellZio(listener, ReceptionistListener.Stop)
-    }.map(_._1)
+    }.map { case (queue, _) => queue }
 
-    override def runAt[U, A](node: Node.Ref[U])(task: TaskR[U, A]): TaskR[Any, A] = for {
+    override def runAt[U, A](node: AkkaNode.Ref[U])(task: TaskR[U, A]): TaskR[Any, A] = for {
       promise <- Promise.make[Nothing, HomunculusLoxodontus.Ref]
       runtime <- ZIO.runtime[Any]
       result <- Task.effectAsyncInterrupt { (cb: Task[A] => Unit) =>

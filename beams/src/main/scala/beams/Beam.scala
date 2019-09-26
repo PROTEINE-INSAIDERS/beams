@@ -12,8 +12,10 @@ trait Beam[N[+ _]] {
 object Beam {
 
   trait Service[R, N[+ _]] {
-    //TODO: rename
-    def listing[U: universe.TypeTag]: ZManaged[R, Throwable, Queue[Set[N[U]]]]
+    /**
+      * List available nodes with given environment.
+      */
+    def nodeListing[U: universe.TypeTag]: ZManaged[R, Throwable, Queue[Set[N[U]]]]
 
     /**
       * Run task at specified node and waits for result.
@@ -33,7 +35,7 @@ trait BeamsSyntax[N[+ _]] extends Beam.Service[Beam[N], N] {
     */
   def submitTo[U](node: N[U])(task: TaskR[U, Any]): Task[Unit]
 
-  override def listing[U: universe.TypeTag]: ZManaged[Beam[N], Throwable, Queue[Set[N[U]]]] = ZManaged.environment[Beam[N]].flatMap(_.beams.listing)
+  override def nodeListing[U: universe.TypeTag]: ZManaged[Beam[N], Throwable, Queue[Set[N[U]]]] = ZManaged.environment[Beam[N]].flatMap(_.beams.nodeListing)
 
   override def runAt[U, A](node: N[U])(task: TaskR[U, A]): TaskR[Beam[N], A] = ZIO.accessM(_.beams.runAt(node)(task))
 
@@ -41,6 +43,11 @@ trait BeamsSyntax[N[+ _]] extends Beam.Service[Beam[N], N] {
     * Wait till some nodes with given environment will become available.
     */
   def someNodes[U: universe.TypeTag]: TaskR[Beam[N], Set[N[U]]] = ZIO.accessM { r =>
-    r.beams.listing[U].use(_.take.repeat(Schedule.doUntil(_.nonEmpty)).provide(Clock.Live))
+    r.beams.nodeListing[U].use(_.take.repeat(Schedule.doUntil(_.nonEmpty)).provide(Clock.Live))
   }
+
+  /**
+    * Wait till any node with given environment will become available.
+    */
+  def anyNode[U: universe.TypeTag]: TaskR[Beam[N], N[U]] = someNodes.map(_.head)
 }

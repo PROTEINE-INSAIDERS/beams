@@ -10,25 +10,25 @@ import scala.reflect.runtime.universe
 
 object Main extends App {
 
-  class Playground(ctx: ActorContext[Node.Command[Playground]]) extends AkkaBeam with Console.Live {
-    override val nodeActor: Node.Ref[_] = ctx.self
+  class Playground(ctx: AkkaNode.Ctx[_]) extends AkkaBeam with Console.Live {
+    override val nodeActor: AkkaNode.Ref[_] = ctx.self
   }
 
-  class Kindergarten(ctx: ActorContext[Node.Command[Kindergarten]]) extends AkkaBeam with Console.Live {
-    override val nodeActor: Node.Ref[_] = ctx.self
+  class Kindergarten(ctx: AkkaNode.Ctx[_]) extends AkkaBeam with Console.Live {
+    override val nodeActor: AkkaNode.Ref[_] = ctx.self
   }
 
-  class Garages(ctx: ActorContext[Node.Command[Garages]]) extends AkkaBeam with Console.Live {
-    override val nodeActor: Node.Ref[_] = ctx.self
+  class Garages(ctx: AkkaNode.Ctx[_]) extends AkkaBeam with Console.Live {
+    override val nodeActor: AkkaNode.Ref[_] = ctx.self
   }
 
-  def myNode[R: universe.TypeTag](f: ActorContext[Node.Command[R]] => R, port: Int): Managed[Throwable, Node.Ref[R]] =
+  def myNode[R: universe.TypeTag](f: ActorContext[AkkaNode.Command[R]] => R, port: Int): Managed[Throwable, AkkaNode.Ref[R]] =
     node(
       setup = ActorSystemSetup(BootstrapSetup(
         ConfigFactory.defaultApplication().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port)))),
-      environment = { ctx: ActorContext[Node.Command[R]] => f(ctx) })
+      environment = { ctx: ActorContext[AkkaNode.Command[R]] => f(ctx) })
 
-  def myNodes: Managed[Throwable, (Node.Ref[Playground], Node.Ref[Kindergarten], Node.Ref[Garages])] = for {
+  def myNodes: Managed[Throwable, (AkkaNode.Ref[Playground], AkkaNode.Ref[Kindergarten], AkkaNode.Ref[Garages])] = for {
     // scalastyle:off magic.number
     s1 <- myNode(new Playground(_), 25520)
     s2 <- myNode(new Kindergarten(_), 25521)
@@ -40,9 +40,9 @@ object Main extends App {
 
   def beam: TaskR[AkkaBeam with Console, Unit] = for {
     _ <- putStrLn("hello from beam")
-    playground <- someNodes[Playground].map(_.head)
-    kindergarten <- someNodes[Kindergarten].map(_.head)
-    garages <- someNodes[Garages].map(_.head)
+    playground <- anyNode[Playground]
+    kindergarten <- anyNode[Kindergarten]
+    garages <- anyNode[Garages]
     _ <- runAt(playground)(printEnv)
     _ <- runAt(kindergarten)(printEnv)
     _ <- runAt(garages)(printEnv)

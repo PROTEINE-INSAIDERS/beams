@@ -13,6 +13,5 @@ object Main {
     println(mem )
     UnsafeUtil.unsafe.freeMemory(mem)
     println("done")
-
   }
 }

@@ -10,8 +10,10 @@ import scala.collection.mutable
 /**
   * Top-level actor for a beams cluster's node.
   */
-object Node {
+object AkkaNode {
   type Ref[+R] = ActorRef[Command[R]]
+
+  type Ctx[R] = ActorContext[Command[R]]
 
   //TODO: добавить тэги и использовать scala.annotation.switch
   sealed trait Command[-R]
@@ -21,7 +23,7 @@ object Node {
   // Это позволит избежать создания доплнительных акторов для реализации ask-паттернов.
   private[akka] final case class Exec[R, A](
                                              task: TaskR[R, A],
-                                             replyTo: ActorRef[Exit[Throwable, A]]
+                                             replyTo: ActorRef[ResultWrapper[A]]
                                            ) extends Command[R] with SerializableMessage
 
   //TODO: Mожно обойтись без этого сообщения. Для этого достаточно создавать фиберы через unsafeRun.
@@ -62,7 +64,7 @@ object Node {
             _ <- Task.effectAsync { (cb: Task[Unit] => Unit) => ctx.self.tell(RegisterFiber(fiber, replyTo, cb)) }
           } yield fiber
           val unregister = tellZio(ctx.self, UnregisterFiber(replyTo))
-          runtime.unsafeRunAsync(register.bracket(_ => unregister)(_.join))(replyTo.tell)
+          runtime.unsafeRunAsync(register.bracket(_ => unregister)(_.join))(r => replyTo.tell(ResultWrapper(r)))
           Behaviors.same
         case RegisterFiber(fiber, initiator, done) =>
           fibers += initiator -> fiber
@@ -88,7 +90,7 @@ object Node {
             id <- Task.effectAsync { (cb: Task[Int] => Unit) => ctx.self.tell(RegisterOrphan(fiber, cb)) }
           } yield (fiber, id)
           val unregister = (id: Int) => tellZio(ctx.self, UnregisterOrphan(id))
-          runtime.unsafeRunAsync_(register.bracket(a => unregister(a._2))(_._1.join))
+          runtime.unsafeRunAsync_(register.bracket { case (_, id) => unregister(id) } { case (fiber, _) => fiber.join })
           Behaviors.same
         case Cancel(initiator) =>
           fibers.get(initiator).foreach { fiber =>
