@@ -9,11 +9,11 @@ private[akka] object HomunculusLoxodontus {
 
   object Interrupt extends NonSerializableMessage
 
-  def apply[R, A](node: AkkaNode.Ref[R], task: TaskR[R, A], cb: Task[A] => Unit): Behavior[Any] = Behaviors.setup { ctx =>
-    node ! AkkaNode.Exec(task, ctx.self)
+  def apply[R, A](node: NodeActor.Ref[R], task: TaskR[R, A], cb: Task[A] => Unit): Behavior[Any] = Behaviors.setup { ctx =>
+    node ! NodeActor.Exec(task, ctx.self)
     Behaviors.receiveMessagePartial {
       case Interrupt =>
-        node ! AkkaNode.Interrupt(ctx.self)
+        node ! NodeActor.Interrupt(ctx.self)
         Behaviors.stopped
       case ResultWrapper(r) =>
         cb(ZIO.done(r.asInstanceOf[Exit[Throwable, A]]))

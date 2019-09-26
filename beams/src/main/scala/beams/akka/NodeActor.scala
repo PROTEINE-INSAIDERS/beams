@@ -10,7 +10,7 @@ import scala.collection.mutable
 /**
   * Top-level actor for a beams cluster's node.
   */
-object AkkaNode {
+object NodeActor {
   type Ref[+R] = ActorRef[Command[R]]
 
   type Ctx[R] = ActorContext[Command[R]]
@@ -63,7 +63,7 @@ object AkkaNode {
             fiber <- task.fork
             _ <- Task.effectAsync { (cb: Task[Unit] => Unit) => ctx.self.tell(RegisterFiber(fiber, replyTo, cb)) }
           } yield fiber
-          val unregister = tellZio(ctx.self, UnregisterFiber(replyTo))
+          val unregister = tellZIO(ctx.self, UnregisterFiber(replyTo))
           runtime.unsafeRunAsync(register.bracket(_ => unregister)(_.join))(r => replyTo.tell(ResultWrapper(r)))
           Behaviors.same
         case RegisterFiber(fiber, initiator, done) =>
@@ -89,7 +89,7 @@ object AkkaNode {
             fiber <- task.fork
             id <- Task.effectAsync { (cb: Task[Int] => Unit) => ctx.self.tell(RegisterOrphan(fiber, cb)) }
           } yield (fiber, id)
-          val unregister = (id: Int) => tellZio(ctx.self, UnregisterOrphan(id))
+          val unregister = (id: Int) => tellZIO(ctx.self, UnregisterOrphan(id))
           runtime.unsafeRunAsync_(register.bracket { case (_, id) => unregister(id) } { case (fiber, _) => fiber.join })
           Behaviors.same
         case Interrupt(initiator) =>
