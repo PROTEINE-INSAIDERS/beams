@@ -39,7 +39,7 @@ trait AkkaBeam extends Beam[AkkaNode.Ref] {
           runtime.unsafeRun(promise.succeed(homunculusLoxodontus))
           ()
         }
-        Left(promise.await.flatMap(homunculusLoxodontus => tellZio(homunculusLoxodontus, HomunculusLoxodontus.Cancel)))
+        Left(promise.await.flatMap(homunculusLoxodontus => tellZio(homunculusLoxodontus, HomunculusLoxodontus.Interrupt)))
       }
     } yield result
   }

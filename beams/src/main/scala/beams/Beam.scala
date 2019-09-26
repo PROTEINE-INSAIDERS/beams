@@ -31,7 +31,7 @@ trait BeamsSyntax[N[+ _]] extends Beam.Service[Beam[N], N] {
     *
     * This function does not require beam's context and can be used to submit tasks outside of node (e.g. can be used in bootstrap sequences).
     *
-    * Please note that the parent task does not track submitted tasks hence parent task interruption will not interrupt submitted tasks.
+    * Please note that the parent task will not track submitted tasks hence parent task interruption will not interrupt submitted tasks.
     */
   def submitTo[U](node: N[U])(task: TaskR[U, Any]): Task[Unit]
 

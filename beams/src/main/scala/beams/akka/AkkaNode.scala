@@ -40,7 +40,7 @@ object AkkaNode {
 
   private[akka] final case class Submit[R](task: TaskR[R, Any]) extends Command[R] with SerializableMessage
 
-  private[akka] final case class Cancel(initiator: ActorRef[_]) extends Command[Any] with SerializableMessage
+  private[akka] final case class Interrupt(initiator: ActorRef[_]) extends Command[Any] with SerializableMessage
 
   //TODO: need to implement gracefull shutdown (wait till all tasks finished or canceled shut down node, invoke call-back function).
   // No remote shutdown required
@@ -92,7 +92,7 @@ object AkkaNode {
           val unregister = (id: Int) => tellZio(ctx.self, UnregisterOrphan(id))
           runtime.unsafeRunAsync_(register.bracket { case (_, id) => unregister(id) } { case (fiber, _) => fiber.join })
           Behaviors.same
-        case Cancel(initiator) =>
+        case Interrupt(initiator) =>
           fibers.get(initiator).foreach { fiber =>
             runtime.unsafeRun(fiber.interrupt)
             fibers -= initiator

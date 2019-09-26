@@ -7,13 +7,13 @@ import scalaz.zio._
 private[akka] object HomunculusLoxodontus {
   type Ref = ActorRef[Any]
 
-  object Cancel extends NonSerializableMessage
+  object Interrupt extends NonSerializableMessage
 
   def apply[R, A](node: AkkaNode.Ref[R], task: TaskR[R, A], cb: Task[A] => Unit): Behavior[Any] = Behaviors.setup { ctx =>
     node ! AkkaNode.Exec(task, ctx.self)
     Behaviors.receiveMessagePartial {
-      case Cancel =>
-        node ! AkkaNode.Cancel(ctx.self)
+      case Interrupt =>
+        node ! AkkaNode.Interrupt(ctx.self)
         Behaviors.stopped
       case ResultWrapper(r) =>
         cb(ZIO.done(r.asInstanceOf[Exit[Throwable, A]]))
