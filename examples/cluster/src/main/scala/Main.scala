@@ -29,11 +29,11 @@ object Main extends App {
       environment = { ctx: ActorContext[Node.Command[R]] => f(ctx) })
 
   def myNodes: Managed[Throwable, (Node.Ref[Playground], Node.Ref[Kindergarten], Node.Ref[Garages])] = for {
-    // scalastyle:off .number
+    // scalastyle:off magic.number
     s1 <- myNode(new Playground(_), 25520)
     s2 <- myNode(new Kindergarten(_), 25521)
     s3 <- myNode(new Garages(_), 25522)
-    // scalastyle:on .number
+    // scalastyle:on magic.number
   } yield (s1, s2, s3)
 
   def printEnv[R <: Console]: ZIO[R, Nothing, Unit] = ZIO.environment[R].flatMap { e => putStrLn(s"running at $e") }
@@ -50,7 +50,7 @@ object Main extends App {
 
   def program: TaskR[Environment, Unit] = myNodes.use { case (n1, _, _) =>
     for {
-      _ <- submit(n1, beam)
+      _ <- submitTo(n1)(beam)
       _ <- putStrLn("Press any key to exit...")
       _ <- getStrLn
       _ <- putStrLn("exiting...")

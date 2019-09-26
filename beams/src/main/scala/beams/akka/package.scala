@@ -41,7 +41,7 @@ package object akka extends BeamsSyntax[Node.Ref] {
     ServiceKey[Node.Command[R]](s"beams-node-$uid")
   }
 
-  def submit[R](node: Node.Ref[R], task: TaskR[R, Unit]): UIO[Unit] = tellZio(node, Node.Submit(task))
+  override def submitTo[R](node: Node.Ref[R])(task: TaskR[R, Any]): Task[Unit] = tellZio(node, Node.Submit(task))
 
   private[akka] def tellZio[A](ref: ActorRef[A], a: A): UIO[Unit] = ZIO.effectTotal(ref.tell(a))
 }

@@ -1,8 +1,8 @@
 package beams
 
 import scalaz.zio._
+import scalaz.zio.clock.Clock
 
-import scala.annotation.tailrec
 import scala.reflect.runtime.universe
 
 trait Beam[N[+ _]] {
@@ -19,13 +19,20 @@ object Beam {
       * Run task at specified node and waits for result.
       */
     def runAt[U, A](node: N[U])(task: TaskR[U, A]): TaskR[R, A]
-
-    //TODO: implement "fire and forget". Such task can not be canceled. No fiber, no cancelation however.
   }
 
 }
 
 trait BeamsSyntax[N[+ _]] extends Beam.Service[Beam[N], N] {
+  /**
+    * Submit task to specified node and return immediately.
+    *
+    * This function does not require beam's context and can be used to submit tasks outside of node (e.g. can be used in bootstrap sequences).
+    *
+    * Please note that the parent task does not track submitted tasks hence parent task interruption will not interrupt submitted tasks.
+    */
+  def submitTo[U](node: N[U])(task: TaskR[U, Any]): Task[Unit]
+
   override def listing[U: universe.TypeTag]: ZManaged[Beam[N], Throwable, Queue[Set[N[U]]]] = ZManaged.environment[Beam[N]].flatMap(_.beams.listing)
 
   override def runAt[U, A](node: N[U])(task: TaskR[U, A]): TaskR[Beam[N], A] = ZIO.accessM(_.beams.runAt(node)(task))
@@ -34,9 +41,6 @@ trait BeamsSyntax[N[+ _]] extends Beam.Service[Beam[N], N] {
     * Wait till some nodes with given environment will become available.
     */
   def someNodes[U: universe.TypeTag]: TaskR[Beam[N], Set[N[U]]] = ZIO.accessM { r =>
-    r.beams.listing[U].use { queue =>
-      def takeSome: Task[Set[N[U]]] = queue.take.flatMap { nodes => if (nodes.isEmpty) takeSome else Task.succeed(nodes) }
-      takeSome
-    }
+    r.beams.listing[U].use(_.take.repeat(Schedule.doUntil(_.nonEmpty)).provide(Clock.Live))
   }
 }

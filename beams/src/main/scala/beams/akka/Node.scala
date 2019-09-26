@@ -36,7 +36,7 @@ object Node {
 
   private[akka] final case class AccessActorContext(f: ActorContext[_] => Unit) extends Command[Any] with NonSerializableMessage
 
-  private[akka] final case class Submit[R](task: TaskR[R, Unit]) extends Command[R] with SerializableMessage
+  private[akka] final case class Submit[R](task: TaskR[R, Any]) extends Command[R] with SerializableMessage
 
   private[akka] final case class Cancel(initiator: ActorRef[_]) extends Command[Any] with SerializableMessage
 
