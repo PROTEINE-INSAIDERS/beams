@@ -6,10 +6,8 @@ import scalaz.zio._
 
 import scala.reflect.runtime.universe._
 
-trait AkkaBeam extends Beam[NodeActor.Ref] {
-  protected def nodeActor: NodeActor.Ref[_]
-
-  override val beams: Beam.Service[Any, NodeActor.Ref] = new Beam.Service[Any, NodeActor.Ref] {
+private[akka] final class AkkaBeam(nodeActor: NodeActor.Ref[_]) extends Beam[NodeActor.Ref] {
+  override val beam: Beam.Service[Any, NodeActor.Ref] = new Beam.Service[Any, NodeActor.Ref] {
     private def onActorContex(f: ActorContext[_] => Unit): Unit = {
       nodeActor ! NodeActor.AccessActorContext { ctx => f(ctx) }
     }
