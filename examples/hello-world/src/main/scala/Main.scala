@@ -1,5 +1,6 @@
 import akka.actor.BootstrapSetup
 import akka.actor.setup._
+import beams.Beam
 import beams.akka._
 import com.typesafe.config._
 import scalaz.zio._
@@ -15,18 +16,16 @@ object Main extends App {
     * which is accessible by task running on current node. This environment provides Вeams services itself by extending
     * [[beams.akka.AkkaBeam]] as well as ZIO's console to print text messages.
     */
-  abstract class NodeEnv(ctx: NodeActor.Ctx[_]) extends AkkaBeam with Console.Live {
-    override val nodeActor = ctx.self
-  }
+  abstract class NodeEnv[N[+ _]] extends Beam[N] with Console.Live
 
   /**
     * Each node can have it's onw environment type to provide node specific services. In this example we will create two
     * different type of environments for Alice and Bob. This fact however will not be used any further. Alice's and Bob's
     * environments are semantically identical and created for demonstration purposes only.
     */
-  final class AliceEnv(ctx: NodeActor.Ctx[_]) extends NodeEnv(ctx)
+  final class AliceEnv[N[+ _]](override val beam: Beam.Service[Any, N]) extends NodeEnv[N]
 
-  final class BobEnv(ctx: NodeActor.Ctx[_]) extends NodeEnv(ctx)
+  final class BobEnv[N[+ _]](override val beam: Beam.Service[Any, N]) extends NodeEnv[N]
 
   /**
     * Beams implied for distributed programming and you likely will want to run different Вeams nodes on different computers.
@@ -36,21 +35,21 @@ object Main extends App {
   private def actorSystem(port: Int) = beams.akka.actorSystem(setup = ActorSystemSetup(BootstrapSetup(
     ConfigFactory.defaultApplication().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port)))))
 
-  private val aliceNode = actorSystem(25520).flatMap(node(new AliceEnv(_)).provide)
-  private val bobNode = actorSystem(25521).flatMap(node(new BobEnv(_)).provide)
+  private val aliceNode = actorSystem(25520).flatMap(node(beam => new AliceEnv(beam.beam)).provide)
+  private val bobNode = actorSystem(25521).flatMap(node(beam => new BobEnv(beam.beam)).provide)
 
   private def factorial(n: Int): Int = n match {
     case 0 => 1
     case _ => n * factorial(n - 1)
   }
 
-  private def foo(x: Int) = for {
-    env <- ZIO.environment[NodeEnv]
+  private def foo[N[+_]](x: Int) = for {
+    env <- ZIO.environment[NodeEnv[N]]
     _ <- putStrLn(s"running foo at $env")
   } yield x + 1
 
-  private def bar(x: Int, y: Int) = for {
-    env <- ZIO.environment[NodeEnv]
+  private def bar[N[+_]](x: Int, y: Int) = for {
+    env <- ZIO.environment[NodeEnv[N]]
     _ <- putStrLn(s"running bar at $env")
   } yield (x + y)
 
@@ -82,10 +81,10 @@ object Main extends App {
           */
         _ <- submitTo(alice) {
           for {
-            y <- foo(x)
+            y <- foo[NodeActor.Ref](x)
             _ <- submitTo(bob) {
               for {
-                res <- bar(x, y)
+                res <- bar[NodeActor.Ref](x, y)
                 _ <- putStrLn(s"The result is $res")
               } yield ()
             }

@@ -31,7 +31,7 @@ package object akka extends BeamsSyntax[NodeActor.Ref] {
     }
   }
 
-  def node[R: universe.TypeTag](f: NodeActor.Ctx[R] => R): ZManaged[ActorSystem[LocalSpawnProtocol.Command], Throwable, NodeActor.Ref[R]] = Managed.make {
+  def node[R: universe.TypeTag](f: Beam[NodeActor.Ref] => R): ZManaged[ActorSystem[LocalSpawnProtocol.Command], Throwable, NodeActor.Ref[R]] = Managed.make {
     ZIO.accessM[ActorSystem[LocalSpawnProtocol.Command]] { system =>
       ZIO.effectAsyncMaybe { cb: (Task[NodeActor.Ref[R]] => Unit) =>
         try {
