@@ -2,6 +2,7 @@ package beams.akka
 
 import akka.actor.typed._
 import akka.actor.typed.scaladsl._
+import beams.Beam
 import scalaz.zio._
 import scalaz.zio.internal._
 
@@ -47,13 +48,9 @@ object NodeActor {
   private[akka] object Stop extends Command[Any] with NonSerializableMessage
 
   // scalastyle:off cyclomatic.complexity
-  private[akka] def apply[R](environment: ActorContext[Command[R]] => R): Behavior[Command[R]] =
+  private[akka] def apply[R](f: Beam[NodeActor.Ref] => R): Behavior[Command[R]] =
     Behaviors.setup { ctx =>
-      val runtime = new Runtime[R] {
-        override val Environment: R = environment(ctx)
-        override val Platform: Platform = PlatformLive.fromExecutionContext(ctx.executionContext)
-      }
-
+      val runtime = Runtime(f(new AkkaBeam(ctx.self)), PlatformLive.fromExecutionContext(ctx.executionContext))
       val fibers = mutable.HashMap[ActorRef[_], Fiber[_, _]]()
       val orphans = mutable.HashMap[Int, Fiber[_, _]]()
 
