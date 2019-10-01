@@ -6,6 +6,8 @@ import com.typesafe.config._
 import scalaz.zio._
 import scalaz.zio.console._
 
+/*
+
 /**
   * This is an adaptation of introductory distributed program taken from Unison programming language (https://github.com/unisonweb/unison)
   */
@@ -103,3 +105,6 @@ object Main extends App {
   override def run(args: List[String]): ZIO[Environment, Nothing, Int] =
     program.foldM(error => putStrLn(error.toString) *> ZIO.succeed(1), _ => ZIO.succeed(0))
 }
+
+
+ */

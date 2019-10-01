@@ -1,5 +1,5 @@
 package beams.akka
-
+/*
 import akka.actor.typed._
 import akka.actor.typed.scaladsl._
 import scalaz.zio._
@@ -29,3 +29,4 @@ object LocalSpawnProtocol {
     }
   }
 }
+*/

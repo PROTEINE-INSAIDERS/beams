@@ -12,8 +12,14 @@ import scalaz.zio._
 import scala.reflect.runtime.universe
 import scala.util.control.NonFatal
 
-//TODO: factor out cluster interface abstraction (where possible)
-package object akka extends BeamsSyntax[NodeActor.Ref] {
+package object akka {
+
+  def tellNow[Req, Res](ref: ActorRef[Req]): Task[Res] = {
+    ???
+  }
+
+/*
+
   /**
     * Create beams actor system.
     */
@@ -55,4 +61,6 @@ package object akka extends BeamsSyntax[NodeActor.Ref] {
   override def submitTo[R](node: NodeActor.Ref[R])(task: TaskR[R, Any]): Task[Unit] = tellZIO(node, NodeActor.Submit(task))
 
   private[akka] def tellZIO[A](ref: ActorRef[A], a: A): UIO[Unit] = ZIO.effectTotal(ref.tell(a))
+
+*/
 }

@@ -9,4 +9,4 @@ ones. Unlike Unison, Beams does not support strong code mobility. However, in pr
 closure serialization, strong code mobility [can be implemented](http://www.dcs.gla.ac.uk/~trinder/papers/strongm.pdf)
 via continuations. 
 
-See [hello-world](examples/hello-world/src/main/scala/Main.scala) for introductory example.
+See [hello-world](examples/hello-world/src/main/scala/Main.scala) application for introductory example.

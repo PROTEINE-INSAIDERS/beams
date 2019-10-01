@@ -7,7 +7,11 @@ import scalaz.zio._
 
 private[akka] object ReceptionistListener {
 
-  object Stop extends NonSerializableMessage
+  type Ref = ActorRef[Command]
+
+  sealed trait Command
+
+  object Shutdown extends Command with NonSerializableMessage
 
   def apply[T](
                 key: ServiceKey[T],
@@ -20,7 +24,7 @@ private[akka] object ReceptionistListener {
         case key.Listing(services) =>
           runtime.unsafeRun(queue.offer(services))
           Behaviors.same
-        case Stop =>
+        case Shutdown =>
           Behaviors.stopped { () => runtime.unsafeRun(queue.shutdown) }
       }
     }

@@ -1,5 +1,5 @@
 package beams.akka
-
+/*
 import akka.actor.typed._
 import akka.actor.typed.scaladsl._
 import beams.Beam
@@ -111,3 +111,4 @@ object NodeActor {
 
   // scalastyle:on cyclomatic.complexity
 }
+*/
