@@ -27,6 +27,12 @@ private[akka] object NodeProtocol {
                              cb: Task[ReceptionistListener.Ref] => Unit
                            ) extends Command[Nothing] with NonSerializableMessage
 
+  final case class RunAt[U, +A](
+                                 node: NodeProtocol.Ref[U],
+                                 task: TaskR[U, A],
+                                 cb: Task[HomunculusLoxodontus.Ref[A]] => Unit
+                               ) extends Command[Nothing] with NonSerializableMessage
+
   object Shutdown extends Command[Nothing]
 
   def apply[R](f: AkkaBeam[R] => R, key: Option[NodeProtocol.Key[R]]): Behavior[Command[R]] = Behaviors.setup { ctx =>
@@ -40,6 +46,17 @@ private[akka] object NodeProtocol {
           case NonFatal(e) => cb(IO.fail(e))
         }
         Behaviors.same
+      case Nodes(key, queue, cb) =>
+        try {
+          cb(IO.succeed(ctx.spawnAnonymous(ReceptionistListener(key, queue, runtime))))
+        } catch {
+          case NonFatal(e) => cb(IO.fail(e))
+        }
+        Behaviors.same
+      case RunAt(node, task, cb) =>
+        // 1. не блокироваться в текущем контексте.
+        // 2. создать ожидающий актор.
+        ???
       case Shutdown =>
         Behaviors.stopped
     }
