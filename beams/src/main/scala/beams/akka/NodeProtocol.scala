@@ -33,6 +33,8 @@ private[akka] object NodeProtocol {
                                  cb: Task[HomunculusLoxodontus.Ref[A]] => Unit
                                ) extends Command[Nothing] with NonSerializableMessage
 
+  final case class Submit[R](task: TaskR[R, Any]) extends Command[R] with SerializableMessage
+
   object Shutdown extends Command[Nothing]
 
   def apply[R](f: AkkaBeam[R] => R, key: Option[NodeProtocol.Key[R]]): Behavior[Command[R]] = Behaviors.setup { ctx =>
@@ -57,7 +59,14 @@ private[akka] object NodeProtocol {
         // 1. не блокироваться в текущем контексте.
         // 2. создать ожидающий актор.
         ???
+      case Submit(task) =>
+        ctx.spawnAnonymous(TaskProtocol(task, runtime, _ => ()))
+        Behaviors.same
       case Shutdown =>
+
+        //TODO: нужно заглушить все дочерние задачи, все дочерние ноды и все дочерние ожидающие акторы.
+        // так как ожидающие акторы привязаны задачам, которые крутятся в текущей момент на ноде, их можно
+        // отдельно не глушить.
         Behaviors.stopped
     }
   }

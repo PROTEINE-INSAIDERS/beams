@@ -19,13 +19,17 @@ private[akka] object ReceptionistListener {
                 runtime: Runtime[_]
               ): Behavior[Any] =
     Behaviors.setup { ctx =>
+      ctx.log.debug(s"ReceptionistListener has been started.")
       ctx.system.receptionist ! Receptionist.Subscribe(key, ctx.self)
       Behaviors.receiveMessagePartial {
         case key.Listing(services) =>
           runtime.unsafeRun(queue.offer(services))
           Behaviors.same
         case Shutdown =>
-          Behaviors.stopped { () => runtime.unsafeRun(queue.shutdown) }
+          Behaviors.stopped { () =>
+            runtime.unsafeRun(queue.shutdown)
+            ctx.log.debug(s"ReceptionistListener has been stopped.")
+          }
       }
     }
 }

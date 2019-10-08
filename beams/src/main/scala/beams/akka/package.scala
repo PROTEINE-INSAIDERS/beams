@@ -14,10 +14,6 @@ import scala.util.control.NonFatal
 
 package object akka {
 
-  def tellNow[Req, Res](ref: ActorRef[Req]): Task[Res] = {
-    ???
-  }
-
 /*
 
   /**

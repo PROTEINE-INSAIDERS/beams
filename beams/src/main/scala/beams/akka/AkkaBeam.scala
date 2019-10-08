@@ -41,7 +41,7 @@ class AkkaBeam[R](self: NodeProtocol.Ref[R]) extends beams.Beam[Backend.type] {
       IO.effectTotal(listener ! ReceptionistListener.Shutdown)
     } map (_._1)
 
-    override def runAt[U, A](node: NodeProtocol.Ref[U])(task: TaskR[U, A]): TaskR[Any, A] =  Managed.make {
+    override def runAt[U, A](node: NodeProtocol.Ref[U])(task: TaskR[U, A]): TaskR[Any, A] = Managed.make {
       ZIO.effectAsync { cb: (Task[HomunculusLoxodontus.Ref[A]] => Unit) =>
         try {
           self ! NodeProtocol.RunAt(node, task, cb)
@@ -64,6 +64,9 @@ class AkkaBeam[R](self: NodeProtocol.Ref[R]) extends beams.Beam[Backend.type] {
       }
     }
 
-    override def submitTo[U](n: NodeProtocol.Ref[U])(t: TaskR[U, Any]): TaskR[Any, Unit] = ???
+    override def submitTo[U](node: NodeProtocol.Ref[U])(task: TaskR[U, Any]): TaskR[Any, Unit] =
+      ZIO {
+        node ! NodeProtocol.Submit(task)
+      }
   }
 }
