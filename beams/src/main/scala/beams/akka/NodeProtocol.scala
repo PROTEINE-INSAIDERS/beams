@@ -9,33 +9,33 @@ import scalaz.zio.internal.PlatformLive
 import scala.util.control.NonFatal
 
 private[akka] object NodeProtocol {
-  type Ref[-R] = ActorRef[Command[R]]
+  type Ref[+R] = ActorRef[Command[R]]
 
   type Key[R] = ServiceKey[Command[R]]
 
-  sealed trait Command[+R]
+  sealed trait Command[-R]
 
   final case class Node[U](
                             f: AkkaBeam[U] => U,
                             key: Option[NodeProtocol.Key[U]],
                             cb: Task[NodeProtocol.Ref[U]] => Unit
-                          ) extends Command[Nothing] with NonSerializableMessage
+                          ) extends Command[Any] with NonSerializableMessage
 
   final case class Nodes[U](
                              key: NodeProtocol.Key[U],
                              queue: Queue[Set[NodeProtocol.Ref[U]]],
                              cb: Task[ReceptionistListener.Ref] => Unit
-                           ) extends Command[Nothing] with NonSerializableMessage
+                           ) extends Command[Any] with NonSerializableMessage
 
   final case class RunAt[U, +A](
                                  node: NodeProtocol.Ref[U],
                                  task: TaskR[U, A],
                                  cb: Task[HomunculusLoxodontus.Ref[A]] => Unit
-                               ) extends Command[Nothing] with NonSerializableMessage
+                               ) extends Command[Any] with NonSerializableMessage
 
   final case class Submit[R](task: TaskR[R, Any]) extends Command[R] with SerializableMessage
 
-  object Shutdown extends Command[Nothing]
+  object Shutdown extends Command[Any]
 
   def apply[R](f: AkkaBeam[R] => R, key: Option[NodeProtocol.Key[R]]): Behavior[Command[R]] = Behaviors.setup { ctx =>
     val runtime = Runtime(f(new AkkaBeam(ctx.self)), PlatformLive.fromExecutionContext(ctx.executionContext))
@@ -60,7 +60,7 @@ private[akka] object NodeProtocol {
         // 2. создать ожидающий актор.
         ???
       case Submit(task) =>
-        ctx.spawnAnonymous(TaskProtocol(task, runtime, _ => ()))
+        ctx.spawnAnonymous(TaskProtocol[R, Any](task, runtime, _ => ()))
         Behaviors.same
       case Shutdown =>
 

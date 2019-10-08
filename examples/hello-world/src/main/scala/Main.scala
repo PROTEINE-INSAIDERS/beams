@@ -1,10 +1,50 @@
-import akka.actor.BootstrapSetup
-import akka.actor.setup._
 import beams.Beam
 import beams.akka._
-import com.typesafe.config._
 import scalaz.zio._
-import scalaz.zio.console._
+
+object Main extends App {
+
+  private def factorial(n: Int): Int = (1 to n).product
+
+
+  private def foo(x: Int) = for {
+    //    env <- ZIO.environment[NodeEnv[N]]
+    //    _ <- putStrLn(s"running foo at $env")
+    _ <- Task.unit
+  } yield x + 1
+
+  private def bar[N[+ _]](x: Int, y: Int) = for {
+    //  env <- ZIO.environment[NodeEnv[N]]
+    //  _ <- putStrLn(s"running bar at $env")
+    _ <- Task.unit
+  } yield (x + y)
+
+  def aliceKey: AkkaBackend.Key[Beam[AkkaBackend.type]] = AkkaBackend.key[Beam[AkkaBackend.type]]("alice")
+
+  def bobKey: AkkaBackend.Key[Any] = AkkaBackend.key[Any]("bob")
+
+  def program = {
+    /**
+      * Since Scala does not support val bindings as first statement in for expressions factorial calculated outside
+      * of for statement.
+      */
+    val x = factorial(6)
+    for {
+      alice <- anyNode(aliceKey)
+      _ <- submitTo(alice) {
+        for {
+          y <- foo(x)
+          bob <- anyNode(bobKey)
+          _ <- submitTo(bob) {
+            bar(x, y)
+          }
+        } yield ()
+      }
+    } yield ()
+  }
+
+  override def run(args: List[String]): ZIO[Main.Environment, Nothing, Int] = ???
+}
 
 /*
 

@@ -6,13 +6,13 @@ import scalaz.zio._
 
 import scala.util.control.NonFatal
 
-class AkkaBeam[R](self: NodeProtocol.Ref[R]) extends beams.Beam[Backend.type] {
+class AkkaBeam[R](self: NodeProtocol.Ref[R]) extends beams.Beam[AkkaBackend.type] {
 
-  override def beam: Beam.Service[Any, Backend.type] = new Beam.Service[Any, Backend.type] {
+  override def beam: Beam.Service[Any, AkkaBackend.type] = new Beam.Service[Any, AkkaBackend.type] {
     override def node[U](
-                          f: beams.Beam[Backend.type] => U,
+                          f: beams.Beam[AkkaBackend.type] => U,
                           key: Option[NodeProtocol.Key[U]]
-                        ): ZManaged[Any, Throwable, NodeProtocol.Ref[U]] = ZManaged.make {
+                        ): ZManaged[Any, Throwable, NodeProtocol.Ref[U]] = Managed.make {
       ZIO.effectAsync { cb: (Task[NodeProtocol.Ref[U]] => Unit) =>
         try {
           self ! NodeProtocol.Node(f, key, cb)
@@ -26,7 +26,7 @@ class AkkaBeam[R](self: NodeProtocol.Ref[R]) extends beams.Beam[Backend.type] {
 
     override def nodes[U](
                            key: ServiceKey[NodeProtocol.Command[U]]
-                         ): ZManaged[Any, Throwable, Queue[Set[NodeProtocol.Ref[U]]]] = ZManaged.make {
+                         ): ZManaged[Any, Throwable, Queue[Set[NodeProtocol.Ref[U]]]] = Managed.make {
       for {
         queue <- Queue.unbounded[Set[NodeProtocol.Ref[U]]]
         listener <- ZIO.effectAsync { cb: (Task[ReceptionistListener.Ref] => Unit) =>

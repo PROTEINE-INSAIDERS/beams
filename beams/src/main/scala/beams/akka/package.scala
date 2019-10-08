@@ -12,7 +12,7 @@ import scalaz.zio._
 import scala.reflect.runtime.universe
 import scala.util.control.NonFatal
 
-package object akka {
+package object akka extends Beam.Syntax[AkkaBackend.type] {
 
 /*
 
