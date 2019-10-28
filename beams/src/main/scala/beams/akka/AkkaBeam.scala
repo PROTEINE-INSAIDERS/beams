@@ -4,6 +4,8 @@ import akka.actor.typed.receptionist.ServiceKey
 import beams._
 import scalaz.zio._
 
+import scala.collection.JavaConverters
+
 import scala.util.control.NonFatal
 
 class AkkaBeam[R](self: NodeProtocol.Ref[R]) extends beams.Beam[AkkaBackend.type] {

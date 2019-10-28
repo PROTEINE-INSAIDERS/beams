@@ -2,6 +2,11 @@ package beams
 
 import scalaz.zio.clock.Clock
 import scalaz.zio._
+import org.scalactic._
+import org.scalactic.TripleEquals._
+import org.scalactic.Tolerance._
+import org.scalactic.MapEqualityConstraints._
+import org.scalactic.StringNormalizations
 
 trait Beam[X <: Backend] {
   def beam: Beam.Service[Any, X]
@@ -56,5 +61,27 @@ object Beam {
       * Wait till any node will become available.
       */
     def anyNode[U](key: X#Key[U]): TaskR[Beam[X], X#Node[U]] = someNodes(key).map(_.head)
+  }
+}
+
+object T {
+  case class Test(d: Double) {
+    override def equals(obj: Any): Boolean = obj match {
+      case d: Double => d === (d +- 0.1)
+      case other => super.equals(other)
+    }
+  }
+
+  def aaa[K] = new Uniformity[Map[K, Double]] {
+    override def normalizedOrSame(b: Any): Any = ???
+
+    override def normalizedCanHandle(b: Any): Boolean = ???
+
+    override def normalized(a: Map[K, Double]): Map[K, Double] = ???
+  }
+
+  def main(args: Array[String]): Unit = {
+    val a = Array.ofDim(3)
+   //println(Map(1 -> Test(1d)) === Map(1 -> 1.1d))
   }
 }
