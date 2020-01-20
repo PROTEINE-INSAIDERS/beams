@@ -1,38 +1,38 @@
 import akka.actor.BootstrapSetup
 import akka.actor.setup._
-import beams.Beam
 import beams.akka._
+import beams.{Beam, Engine}
 import com.typesafe.config._
-import scalaz.zio._
-import scalaz.zio.console._
+import zio._
+import zio.console._
 
 /**
-  * This is an adaptation of introductory distributed program taken from Unison programming language (https://github.com/unisonweb/unison)
-  */
+ * This is an adaptation of introductory distributed program taken from Unison programming language (https://github.com/unisonweb/unison)
+ */
 object Main extends App {
 
   /**
-    * Node is the basic concept of Вeams framework. Nodes are capable to run Вeams tasks and provide local environment
-    * which is accessible by task running on current node. This environment provides Вeams services itself by extending
-    * [[beams.akka.AkkaBeam]] as well as ZIO's console to print text messages.
-    */
-  abstract class NodeEnv[N[+ _]] extends Beam[N] with Console.Live
+   * Node is the basic concept of Вeams framework. Nodes are capable to run Вeams tasks and provide local environment
+   * which is accessible by task running on current node. This environment provides Вeams services itself by extending
+   * [[beams.akka.AkkaBeam]] as well as ZIO's console to print text messages.
+   */
+  abstract class NodeEnv[X <: Engine] extends Beam[X] with Console.Live
 
   /**
-    * Each node can have it's onw environment type to provide node specific services. In this example we will create two
-    * different type of environments for Alice and Bob. This fact however will not be used any further. Alice's and Bob's
-    * environments are semantically identical and created for demonstration purposes only.
-    */
-  final class AliceEnv[N[+ _]](override val beam: Beam.Service[Any, N]) extends NodeEnv[N]
+   * Each node can have it's onw environment type to provide node specific services. In this example we will create two
+   * different type of environments for Alice and Bob. This fact however will not be used any further. Alice's and Bob's
+   * environments are semantically identical and created for demonstration purposes only.
+   */
+  final class AliceEnv[X <: Engine](override val beam: Beam.Service[Any, X]) extends NodeEnv[X]
 
-  final class BobEnv[N[+ _]](override val beam: Beam.Service[Any, N]) extends NodeEnv[N]
+  final class BobEnv[X <: Engine](override val beam: Beam.Service[Any, X]) extends NodeEnv[X]
 
   /**
-    * Beams implied for distributed programming and you likely will want to run different Вeams nodes on different computers.
-    * For the sake of simplicity this exampe will use two different actor system running in a same program to simulate
-    * distributed system.
-    */
-  private def actorSystem(port: Int) = beams.akka.actorSystem(setup = ActorSystemSetup(BootstrapSetup(
+   * Beams implied for distributed programming and you likely will want to run different Вeams nodes on different computers.
+   * For the sake of simplicity this exampe will use two different actor system running in a same program to simulate
+   * distributed system.
+   */
+  private def actorSystem(port: Int) = beams.akka.root(setup = ActorSystemSetup(BootstrapSetup(
     ConfigFactory.defaultApplication().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port)))))
 
   private val aliceNode = actorSystem(25520).flatMap(node(beam => new AliceEnv(beam.beam)).provide)
@@ -43,48 +43,48 @@ object Main extends App {
     case _ => n * factorial(n - 1)
   }
 
-  private def foo[N[+_]](x: Int) = for {
-    env <- ZIO.environment[NodeEnv[N]]
+  private def foo[X <: Engine](x: Int) = for {
+    env <- ZIO.environment[NodeEnv[X]]
     _ <- putStrLn(s"running foo at $env")
   } yield x + 1
 
-  private def bar[N[+_]](x: Int, y: Int) = for {
-    env <- ZIO.environment[NodeEnv[N]]
+  private def bar[X <: Engine](x: Int, y: Int) = for {
+    env <- ZIO.environment[NodeEnv[X]]
     _ <- putStrLn(s"running bar at $env")
   } yield (x + y)
 
-  def program: TaskR[Environment, Unit] = (aliceNode <*> bobNode) use {
+  def program: RIO[ZEnv, Unit] = (aliceNode <*> bobNode) use {
     /**
-      * In this example direct references to Alice and Bob nodes available. In real distributed application such
-      * references should be discovered with [[beams.BeamsSyntax.nodeListing]] or [[beams.BeamsSyntax.someNodes]]
-      * and [[beams.BeamsSyntax.anyNode]] helper functions.
-      */
+     * In this example direct references to Alice and Bob nodes available. In real distributed application such
+     * references should be discovered with [[beams.BeamsSyntax.nodeListing]] or [[beams.BeamsSyntax.someNodes]]
+     * and [[beams.BeamsSyntax.anyNode]] helper functions.
+     */
     case (alice, bob) =>
 
       /**
-        * Since Scala does not support val bindings as first statement in for expressions factorial calculated outside
-        * of for statement.
-        */
+       * Since Scala does not support val bindings as first statement in for expressions factorial calculated outside
+       * of for statement.
+       */
       val x = factorial(6)
       for {
         /**
-          * Unlike Unison, Beams does not support stong code mobility. Hence it's not possibe to 'transfer' execution of
-          * current program to the remote node. But it possible to create closure which captures current execution state
-          * and submit it to remote node.
-          *
-          * You should be careful not to capture too much state or something which can not be serialized. Same rule
-          * applies to any distributed framework relying on closure serialization, such as Spark, for example.
-          *
-          * Please note, that [[beams.BeamsSyntax.submitTo]] will run remote process in fire-and-forget fashion.
-          * You will not be able to interrupt remote task nor obtain it's result. Use [[beams.BeamsSyntax.runAt]] for
-          * guided launch.
-          */
+         * Unlike Unison, Beams does not support stong code mobility. Hence it's not possibe to 'transfer' execution of
+         * current program to the remote node. But it possible to create closure which captures current execution state
+         * and submit it to remote node.
+         *
+         * You should be careful not to capture too much state or something which can not be serialized. Same rule
+         * applies to any distributed framework relying on closure serialization, such as Spark, for example.
+         *
+         * Please note, that [[beams.BeamsSyntax.submitTo]] will run remote process in fire-and-forget fashion.
+         * You will not be able to interrupt remote task nor obtain it's result. Use [[beams.BeamsSyntax.runAt]] for
+         * guided launch.
+         */
         _ <- submitTo(alice) {
           for {
-            y <- foo[NodeActor.Ref](x)
+            y <- foo[AkkaEngine](x)
             _ <- submitTo(bob) {
               for {
-                res <- bar[NodeActor.Ref](x, y)
+                res <- bar[AkkaEngine](x, y)
                 _ <- putStrLn(s"The result is $res")
               } yield ()
             }
@@ -92,14 +92,14 @@ object Main extends App {
         }
 
         /**
-          * Since we do not control submitted tasks and not having idea when them will terminate, main program should be
-          * terminated manually.
-          */
+         * Since we do not control submitted tasks and not having idea when them will terminate, main program should be
+         * terminated manually.
+         */
         _ <- putStrLn("Press any key to exit...")
         _ <- getStrLn
       } yield ()
   }
 
-  override def run(args: List[String]): ZIO[Environment, Nothing, Int] =
+  override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
     program.foldM(error => putStrLn(error.toString) *> ZIO.succeed(1), _ => ZIO.succeed(0))
 }

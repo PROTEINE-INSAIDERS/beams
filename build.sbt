@@ -2,8 +2,8 @@ name := "beams"
 
 version := "0.1"
 
-val akkaVersion = "2.6.0-M7"
-val zioVersion = "1.0-RC5"
+val akkaVersion = "2.6.1"
+val zioVersion = "1.0.0-RC17"
 
 lazy val commonScalacOptions = Seq(
   "-encoding",
@@ -18,12 +18,12 @@ lazy val commonScalacOptions = Seq(
   //"-Ywarn-dead-code",
   "-Ywarn-numeric-widen",
   "-Ywarn-value-discard",
-  "-Xfatal-warnings",
-  "-deprecation",
+ // "-Xfatal-warnings",
+ // "-deprecation",
   "-Ypartial-unification")
 
 lazy val commonSettings = Seq(
-  scalaVersion := "2.12.9",
+  scalaVersion := "2.12.10",
   scalacOptions ++= commonScalacOptions,
   licenses += ("BSD-3-Clause", url("http://opensource.org/licenses/BSD-3-Clause"))
 )
@@ -34,7 +34,7 @@ lazy val beams = (project in file("beams")).settings(
     "org.scala-lang" % "scala-reflect" % scalaVersion.value,
     "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
     "com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion,
-    "org.scalaz" %% "scalaz-zio" % zioVersion,
+    "dev.zio" %% "zio" % zioVersion,
     "com.twitter" %% "chill-akka" % "0.9.3"
   )
 )

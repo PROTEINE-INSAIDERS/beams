@@ -2,10 +2,12 @@ package beams.akka
 
 import akka.actor.typed._
 import akka.actor.typed.scaladsl._
-import scalaz.zio._
+import zio._
 
 import scala.util.control.NonFatal
 
+//TODO: возможно следует переделать в актор, дающий доступ к контексту.
+//TODO: можно вообще эту функциональность в ноду добавить
 object LocalSpawnProtocol {
   type Ref = ActorRef[Command]
 
@@ -19,9 +21,9 @@ object LocalSpawnProtocol {
     Behaviors.receiveMessagePartial {
       case Spawn(behavior, cb) =>
         try {
-          cb(ZIO.succeed(ctx.spawnAnonymous(behavior)))
+          cb(Task.succeed(ctx.spawnAnonymous(behavior)))
         } catch {
-          case NonFatal(e) => cb(ZIO.fail(e))
+          case NonFatal(e) => cb(Task.fail(e))
         }
         Behaviors.same
       case Stop =>

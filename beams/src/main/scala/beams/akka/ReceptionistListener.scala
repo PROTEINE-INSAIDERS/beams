@@ -3,7 +3,7 @@ package beams.akka
 import akka.actor.typed._
 import akka.actor.typed.receptionist._
 import akka.actor.typed.scaladsl._
-import scalaz.zio._
+import zio._
 
 private[akka] object ReceptionistListener {
 

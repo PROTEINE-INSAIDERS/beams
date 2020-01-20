@@ -1,44 +1,44 @@
 package beams.akka
 
-import akka.actor.typed.scaladsl._
-import beams._
-import scalaz.zio._
+import akka.actor.typed._
+import akka.actor.typed.receptionist.ServiceKey
+import beams.Beam
+import zio._
 
-import scala.reflect.runtime.universe._
+import scala.util.control.NonFatal
 
-private[akka] final class AkkaBeam(nodeActor: NodeActor.Ref[_]) extends Beam[NodeActor.Ref] {
-  override val beam: Beam.Service[Any, NodeActor.Ref] = new Beam.Service[Any, NodeActor.Ref] {
-    private def onActorContex(f: ActorContext[_] => Unit): Unit = {
-      nodeActor ! NodeActor.AccessActorContext { ctx => f(ctx) }
-    }
-
-    private def withActorContext[A](f: ActorContext[_] => A): Task[A] = Task.effectAsync { (cb: Task[A] => Unit) =>
-      nodeActor ! NodeActor.AccessActorContext { ctx =>
-        cb(Task(f(ctx)))
+final case class AkkaBeam(lsp: LocalSpawnProtocol.Ref) extends Beam[AkkaEngine] {
+  override def beam: Beam.Service[Any, AkkaEngine] = new Beam.Service[Any, AkkaEngine] {
+    private def spawn[T](behavior: Behavior[T]): Task[ActorRef[T]] = Task.effectAsync { cb =>
+      try {
+        lsp ! LocalSpawnProtocol.Spawn(behavior, cb)
+      } catch {
+        case NonFatal(e) => cb(Task.fail(e))
       }
     }
 
-    override def nodeListing[U: TypeTag]: ZManaged[Any, Throwable, Queue[Set[NodeActor.Ref[U]]]] = Managed.make {
+    override def runAt[U, A](node: NodeActor.Ref[U])(task: RIO[U, A]): Task[A] =
       for {
-        queue <- scalaz.zio.Queue.unbounded[Set[NodeActor.Ref[U]]]
         runtime <- ZIO.runtime[Any]
-        listener <- withActorContext(_.spawnAnonymous(ReceptionistListener(nodeKey[U], queue, runtime)))
-      } yield (queue, listener)
-    } { case (_, listener) => tellZIO(listener, ReceptionistListener.Stop)
-    }.map { case (queue, _) => queue }
-
-    override def runAt[U, A](node: NodeActor.Ref[U])(task: TaskR[U, A]): TaskR[Any, A] = for {
-      promise <- Promise.make[Nothing, HomunculusLoxodontus.Ref]
-      runtime <- ZIO.runtime[Any]
-      result <- Task.effectAsyncInterrupt { (cb: Task[A] => Unit) =>
-        onActorContex { ctx =>
-          //TODO: more safety??
-          val homunculusLoxodontus = ctx.spawnAnonymous(HomunculusLoxodontus(node, task, cb))
-          runtime.unsafeRun(promise.succeed(homunculusLoxodontus))
-          ()
+        result <- Task.effectAsyncInterrupt { (cb: Task[A] => Unit) =>
+          try {
+            val replyTo = runtime.unsafeRun(spawn(ReplyToActor(node, cb)))
+            node ! NodeActor.Exec(task, replyTo)
+            Left(Task.effectTotal(replyTo ! ReplyToActor.Interrupt))
+          } catch {
+            case NonFatal(e) => Right(Task.fail(e))
+          }
         }
-        Left(promise.await.flatMap(homunculusLoxodontus => tellZIO(homunculusLoxodontus, HomunculusLoxodontus.Interrupt)))
-      }
-    } yield result
+      } yield result
+
+    override def nodeListing[U](key: ServiceKey[NodeActor.Command[U]]): TaskManaged[Queue[Set[NodeActor.Ref[U]]]] =
+      Managed.make {
+        for {
+          queue <- zio.Queue.unbounded[Set[NodeActor.Ref[U]]]
+          runtime <- ZIO.runtime[Any]
+          listener <- spawn(ReceptionistListener(key, queue, runtime))
+        } yield (queue, listener)
+      } { case (_, listener) => Task.effectTotal(listener ! ReceptionistListener.Stop)
+      }.map { case (queue, _) => queue }
   }
 }

@@ -1,53 +1,56 @@
 package beams
 
-import scalaz.zio._
-import scalaz.zio.clock.Clock
+import zio._
 
-import scala.reflect.runtime.universe
+trait Engine {
+  type Node[+_]
+  type NodeKey[_]
+}
 
-trait Beam[N[+ _]] {
-  def beam: Beam.Service[Any, N]
+trait Beam[X <: Engine] {
+  def beam: Beam.Service[Any, X]
 }
 
 object Beam {
 
-  trait Service[R, N[+ _]] {
+  trait Service[R, X <: Engine] {
     /**
-      * List available nodes with given environment.
-      */
-    def nodeListing[U: universe.TypeTag]: ZManaged[R, Throwable, Queue[Set[N[U]]]]
+     * List available nodes by given key.
+     */
+    def nodeListing[U](key: X#NodeKey[U]): RManaged[R, Queue[Set[X#Node[U]]]]
 
     /**
-      * Run task at specified node and waits for result.
-      */
-    def runAt[U, A](node: N[U])(task: TaskR[U, A]): TaskR[R, A]
+     * Run task at specified node and waits for result.
+     */
+    def runAt[U, A](node: X#Node[U])(task: RIO[U, A]): RIO[R, A]
   }
 
 }
 
-trait BeamsSyntax[N[+ _]] extends Beam.Service[Beam[N], N] {
+trait BeamsSyntax[X <: Engine] extends Beam.Service[Beam[X], X] {
   /**
-    * Submit task to specified node and return immediately.
-    *
-    * This function does not require beam's context and can be used to submit tasks outside of node (e.g. can be used in bootstrap sequences).
-    *
-    * Please note that the parent task will not track submitted tasks hence parent task interruption will not interrupt submitted tasks.
-    */
-  def submitTo[U](node: N[U])(task: TaskR[U, Any]): Task[Unit]
+   * Submit task to specified node and return immediately.
+   *
+   * This function does not require beam's context and can be used to submit tasks from outside of node (e.g. can be used in bootstrap sequence).
+   *
+   * Please note that the parent task will not track submitted tasks hence parent task interruption will not interrupt submitted tasks.
+   */
+  //TODO: нужно всё-таки решить, оставить это в beam, или вынести наружу.
+  def submitTo[U](node: X#Node[U])(task: RIO[U, Any]): Task[Unit]
 
-  override def nodeListing[U: universe.TypeTag]: ZManaged[Beam[N], Throwable, Queue[Set[N[U]]]] = ZManaged.environment[Beam[N]].flatMap(_.beam.nodeListing)
+  override def nodeListing[U](key: X#NodeKey[U]): RManaged[Beam[X], Queue[Set[X#Node[U]]]] = ZManaged.environment[Beam[X]].flatMap(_.beam.nodeListing(key))
 
-  override def runAt[U, A](node: N[U])(task: TaskR[U, A]): TaskR[Beam[N], A] = ZIO.accessM(_.beam.runAt(node)(task))
+  override def runAt[U, A](node: X#Node[U])(task: RIO[U, A]): RIO[Beam[X], A] = ZIO.accessM(_.beam.runAt(node)(task))
 
   /**
-    * Wait till some nodes with given environment will become available.
-    */
-  def someNodes[U: universe.TypeTag]: TaskR[Beam[N], Set[N[U]]] = ZIO.accessM { r =>
-    r.beam.nodeListing[U].use(_.take.repeat(Schedule.doUntil(_.nonEmpty)).provide(Clock.Live))
+   * Wait till some nodes with given environment will become available.
+   */
+  def someNodes[U](key: X#NodeKey[U]): RIO[Beam[X], Set[X#Node[U]]] = ZIO.accessM { r =>
+    r.beam.nodeListing[U](key).use(_.take.repeat(Schedule.doUntil(_.nonEmpty)))
   }
 
   /**
-    * Wait till any node with given environment will become available.
-    */
-  def anyNode[U: universe.TypeTag]: TaskR[Beam[N], N[U]] = someNodes.map(_.head)
+   * Wait till any node with given environment will become available.
+   */
+  def anyNode[U](key: X#NodeKey[U]): RIO[Beam[X], X#Node[U]] = someNodes(key).map(_.head)
 }

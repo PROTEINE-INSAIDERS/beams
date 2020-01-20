@@ -1,6 +1,6 @@
 import beams._
 import beams.akka._
-import scalaz.zio._
+import zio._
 
 import scala.collection._
 import scala.concurrent.duration._
