@@ -1,28 +1,28 @@
 package beams.akka
 
 import akka.actor.typed._
-import akka.actor.typed.receptionist.ServiceKey
-import beams.Beam
+import akka.actor.typed.receptionist._
+import beams._
 import zio._
 
 import scala.util.control.NonFatal
 
-final case class AkkaBeam(lsp: LocalSpawnProtocol.Ref) extends Beam[AkkaEngine] {
-  override def beam: Beam.Service[Any, AkkaEngine] = new Beam.Service[Any, AkkaEngine] {
-    private def spawn[T](behavior: Behavior[T]): Task[ActorRef[T]] = Task.effectAsync { cb =>
+private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends Beam[AkkaBackend] {
+  override def beam: Beam.Service[Any, AkkaBackend] = new Beam.Service[Any, AkkaBackend] {
+    private def spawn[T](behavior: Behavior[T], key: Option[ServiceKey[T]]): Task[ActorRef[T]] = Task.effectAsync { cb =>
       try {
-        lsp ! LocalSpawnProtocol.Spawn(behavior, cb)
+        nodeActor ! NodeActor.Spawn(behavior, None, cb)
       } catch {
         case NonFatal(e) => cb(Task.fail(e))
       }
     }
 
-    override def runAt[U, A](node: NodeActor.Ref[U])(task: RIO[U, A]): Task[A] =
+    override def at[U, A](node: NodeActor.Ref[U])(task: RIO[U, A]): Task[A] =
       for {
         runtime <- ZIO.runtime[Any]
         result <- Task.effectAsyncInterrupt { (cb: Task[A] => Unit) =>
           try {
-            val replyTo = runtime.unsafeRun(spawn(ReplyToActor(node, cb)))
+            val replyTo = runtime.unsafeRun(spawn(ReplyToActor(node, cb), None))
             node ! NodeActor.Exec(task, replyTo)
             Left(Task.effectTotal(replyTo ! ReplyToActor.Interrupt))
           } catch {
@@ -31,12 +31,15 @@ final case class AkkaBeam(lsp: LocalSpawnProtocol.Ref) extends Beam[AkkaEngine] 
         }
       } yield result
 
-    override def nodeListing[U](key: ServiceKey[NodeActor.Command[U]]): TaskManaged[Queue[Set[NodeActor.Ref[U]]]] =
+    override def node[U](f: Runtime[Beam[AkkaBackend]] => Runtime[U], key: Option[NodeActor.Key[U]]): TaskManaged[NodeActor.Ref[U]] =
+      Managed.make(spawn(NodeActor(f), key)) { node => Task.effectTotal(node ! NodeActor.Stop) }
+
+    override def listing[U](key: ServiceKey[NodeActor.Command[U]]): TaskManaged[Queue[Set[NodeActor.Ref[U]]]] =
       Managed.make {
         for {
           queue <- zio.Queue.unbounded[Set[NodeActor.Ref[U]]]
           runtime <- ZIO.runtime[Any]
-          listener <- spawn(ReceptionistListener(key, queue, runtime))
+          listener <- spawn(ReceptionistListener(key, queue, runtime), None)
         } yield (queue, listener)
       } { case (_, listener) => Task.effectTotal(listener ! ReceptionistListener.Stop)
       }.map { case (queue, _) => queue }

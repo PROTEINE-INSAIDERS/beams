@@ -17,3 +17,5 @@ Beams encapsulates error handling and distributed task cancellation allowing to 
 - No timeouts, Beams relies on task cancellation instead. 
 
 See [hello-world](examples/hello-world/src/main/scala/Main.scala) for introductory example.
+
+**\[Help wanted\]** Any help in correcting grammatical errors would be greatly appreciated.

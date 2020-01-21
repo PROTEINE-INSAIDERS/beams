@@ -1,8 +1,8 @@
 package beams.akka
 
-import beams.Engine
+import beams.Backend
 
-final class AkkaEngine extends Engine {
+final class AkkaBackend extends Backend {
   override type Node[+R] = NodeActor.Ref[R]
   override type NodeKey[T] = akka.actor.typed.receptionist.ServiceKey[NodeActor.Command[T]]
 }

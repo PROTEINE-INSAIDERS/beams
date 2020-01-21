@@ -1,69 +1,35 @@
 package beams
 
-import java.net.URLEncoder
-
 import _root_.akka.actor.BootstrapSetup
 import _root_.akka.actor.setup._
 import _root_.akka.actor.typed._
 import _root_.akka.actor.typed.receptionist._
-import _root_.akka.cluster.typed._
 import zio._
 
-import scala.reflect.runtime.universe
-import scala.util.control.NonFatal
-
-package object akka extends BeamsSyntax[AkkaEngine] {
+package object akka extends BeamsSyntax[AkkaBackend] {
   /**
    * Create beams root node.
    */
-  def root[R](
-               env: Beam[AkkaEngine] => R,
-               key: Option[NodeActor.Key[R]] = None,
-               name: String = "beams",
-               setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
-               props: Props = Props.empty,
-             ): Managed[Throwable, ActorSystem[NodeActor.Command[R]]] = Managed.make {
-    IO {
-      ActorSystem(NodeActor(env), name, setup, props)
-    }
+  //TODO: это создаст ActorSystem, которая затем может быть использована для создания Beam.
+  // далее Beam может быть использован для создания рантайма и запуска задачи.
+  //TODO: нужно понять, хотим ли мы использовать ZIO здесь. Возможно этот метод должен работать как unsafeRun...
+  def root[R](f: Runtime[AkkaBeam] => Runtime[R], // Можно ли отказаться от этой функции, используя provide в клиентском коде?
+              key: Option[NodeActor.Key[R]] = None,
+              name: String = "beams",
+              setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
+              props: Props = Props.empty
+             ): Managed[Throwable, Beam[AkkaBackend]] = Managed.make {
+    for {
+      system <- IO {
+        val system = ActorSystem(NodeActor(f), name, setup, props)
+        key.foreach(system.receptionist ! Receptionist.Register(_, system))
+        system
+      }
+    } yield system
   } { system =>
     Task.effectTotal {
-      system ! LocalSpawnProtocol.Stop
-      val cluster = Cluster(system)
-      cluster.manager ! Leave(cluster.selfMember.address)
+      system ! NodeActor.Stop
     }
-  }
+  }.map(AkkaBeam(_))
 
-  def node[R](env: R, key: Option[NodeActor.Key[R]] = None): RManaged[ActorRef[LocalSpawnProtocol.Command], NodeActor.Ref[R]] =
-    ZManaged.make {
-      ZIO.accessM[ActorRef[LocalSpawnProtocol.Command]] { lsp =>
-        ZIO.effectAsyncMaybe { cb: (Task[NodeActor.Ref[R]] => Unit) =>
-          try {
-            lsp ! LocalSpawnProtocol.Spawn(NodeActor(env), key match {
-              case Some(k) => { task: Task[NodeActor.Ref[R]] => task.absolve ??? }
-              case None => cb
-            }
-
-              ///  { task: Task[ExecutorActor.Ref[R]] =>
-              //       cb(task.tap { node => IO(lsp.receptionist ! Receptionist.register(nodeKey[R], node))
-              //       })
-              //     }
-
-            )
-          } catch {
-            case NonFatal(e) => Some(IO.fail(e))
-          }
-          None
-        }
-      }
-    } { node => Task.effectTotal(node ! NodeActor.Stop) }
-
-  def nodeKey[R: universe.TypeTag]: ServiceKey[NodeActor.Command[R]] = {
-    val uid = URLEncoder.encode(universe.typeTag[R].tpe.toString, "UTF-8")
-    ServiceKey[NodeActor.Command[R]](s"beams-node-$uid")
-  }
-
-  override def submitTo[U](node: NodeActor.Ref[U])(task: RIO[U, Any]): Task[Unit] = Task.effectTotal {
-    ???
-  }
 }

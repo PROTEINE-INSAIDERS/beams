@@ -1,7 +1,7 @@
 import akka.actor.BootstrapSetup
 import akka.actor.setup._
 import beams.akka._
-import beams.{Beam, Engine}
+import beams._
 import com.typesafe.config._
 import zio._
 import zio.console._
@@ -10,22 +10,22 @@ import zio.console._
  * This is an adaptation of introductory distributed program taken from Unison programming language (https://github.com/unisonweb/unison)
  */
 object Main extends App {
-
+/*
   /**
    * Node is the basic concept of Вeams framework. Nodes are capable to run Вeams tasks and provide local environment
    * which is accessible by task running on current node. This environment provides Вeams services itself by extending
    * [[beams.akka.AkkaBeam]] as well as ZIO's console to print text messages.
    */
-  abstract class NodeEnv[X <: Engine] extends Beam[X] with Console.Live
+  abstract class NodeEnv[X <: Backend] extends Beam[X] with Console.Live
 
   /**
    * Each node can have it's onw environment type to provide node specific services. In this example we will create two
    * different type of environments for Alice and Bob. This fact however will not be used any further. Alice's and Bob's
    * environments are semantically identical and created for demonstration purposes only.
    */
-  final class AliceEnv[X <: Engine](override val beam: Beam.Service[Any, X]) extends NodeEnv[X]
+  final class AliceEnv[X <: Backend](override val beam: Beam.Service[Any, X]) extends NodeEnv[X]
 
-  final class BobEnv[X <: Engine](override val beam: Beam.Service[Any, X]) extends NodeEnv[X]
+  final class BobEnv[X <: Backend](override val beam: Beam.Service[Any, X]) extends NodeEnv[X]
 
   /**
    * Beams implied for distributed programming and you likely will want to run different Вeams nodes on different computers.
@@ -43,12 +43,12 @@ object Main extends App {
     case _ => n * factorial(n - 1)
   }
 
-  private def foo[X <: Engine](x: Int) = for {
+  private def foo[X <: Backend](x: Int) = for {
     env <- ZIO.environment[NodeEnv[X]]
     _ <- putStrLn(s"running foo at $env")
   } yield x + 1
 
-  private def bar[X <: Engine](x: Int, y: Int) = for {
+  private def bar[X <: Backend](x: Int, y: Int) = for {
     env <- ZIO.environment[NodeEnv[X]]
     _ <- putStrLn(s"running bar at $env")
   } yield (x + y)
@@ -56,7 +56,7 @@ object Main extends App {
   def program: RIO[ZEnv, Unit] = (aliceNode <*> bobNode) use {
     /**
      * In this example direct references to Alice and Bob nodes available. In real distributed application such
-     * references should be discovered with [[beams.BeamsSyntax.nodeListing]] or [[beams.BeamsSyntax.someNodes]]
+     * references should be discovered with [[beams.BeamsSyntax.listing]] or [[beams.BeamsSyntax.someNodes]]
      * and [[beams.BeamsSyntax.anyNode]] helper functions.
      */
     case (alice, bob) =>
@@ -76,15 +76,15 @@ object Main extends App {
          * applies to any distributed framework relying on closure serialization, such as Spark, for example.
          *
          * Please note, that [[beams.BeamsSyntax.submitTo]] will run remote process in fire-and-forget fashion.
-         * You will not be able to interrupt remote task nor obtain it's result. Use [[beams.BeamsSyntax.runAt]] for
+         * You will not be able to interrupt remote task nor obtain it's result. Use [[beams.BeamsSyntax.at]] for
          * guided launch.
          */
         _ <- submitTo(alice) {
           for {
-            y <- foo[AkkaEngine](x)
+            y <- foo[AkkaBackend](x)
             _ <- submitTo(bob) {
               for {
-                res <- bar[AkkaEngine](x, y)
+                res <- bar[AkkaBackend](x, y)
                 _ <- putStrLn(s"The result is $res")
               } yield ()
             }
@@ -98,6 +98,16 @@ object Main extends App {
         _ <- putStrLn("Press any key to exit...")
         _ <- getStrLn
       } yield ()
+  }
+*/
+  //TODO: nodeRef @ { ... }
+  def aaa = for {
+    rt <- ZIO.runtime[Beam[AkkaBackend]]
+    a <- at(???){???}
+  } yield ()
+
+  val program = root(???).use { rb =>
+    aaa.provide(rb)
   }
 
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
