@@ -27,12 +27,22 @@ object Beam {
     /**
      * Create a child node which can run tasks.
      */
+    // При создании узла нам в любом случае надо передавать ему окружение, которое будут видеть задачи, отправленные на этот узел.
+    // Кроме того, мы можем захотеть внести изменения в платформу.
+    // Скорее всего нам понадобится сервиси самой Beam[X]
     def node[U](f: Runtime[Beam[X]] => Runtime[U], key: Option[X#NodeKey[U]] = None): RManaged[R, X#Node[U]]
   }
 
 }
 
 trait BeamsSyntax[X <: Backend] extends Beam.Service[Beam[X], X] {
+
+  implicit class TaskExtension[U, A](task: RIO[U, A]) {
+    def @@(node: X#Node[U]): RIO[Beam[X], A] = ZIO.accessM(_.beam.at(node)(task))
+
+    def aaa(): Unit = ()
+  }
+
   override def at[U, A](node: X#Node[U])(task: RIO[U, A]): RIO[Beam[X], A] =
     ZIO.accessM(_.beam.at(node)(task))
 

@@ -13,7 +13,7 @@ package object akka extends BeamsSyntax[AkkaBackend] {
   //TODO: это создаст ActorSystem, которая затем может быть использована для создания Beam.
   // далее Beam может быть использован для создания рантайма и запуска задачи.
   //TODO: нужно понять, хотим ли мы использовать ZIO здесь. Возможно этот метод должен работать как unsafeRun...
-  def root[R](f: Runtime[AkkaBeam] => Runtime[R], // Можно ли отказаться от этой функции, используя provide в клиентском коде?
+  def root[R](f: Runtime[AkkaBeam] => Runtime[R],
               key: Option[NodeActor.Key[R]] = None,
               name: String = "beams",
               setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
@@ -25,11 +25,11 @@ package object akka extends BeamsSyntax[AkkaBackend] {
         key.foreach(system.receptionist ! Receptionist.Register(_, system))
         system
       }
+      _ <- IO.runtime
     } yield system
   } { system =>
     Task.effectTotal {
       system ! NodeActor.Stop
     }
   }.map(AkkaBeam(_))
-
 }
