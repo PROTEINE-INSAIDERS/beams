@@ -2,6 +2,8 @@ package beams
 
 import zio._
 
+import scala.reflect.ClassTag
+
 trait Backend {
   type Node[+_]
   type NodeKey[_]
@@ -9,6 +11,8 @@ trait Backend {
 
 trait Beam[X <: Backend] {
   def beam: Beam.Service[Any, X]
+
+  System.nanoTime()
 }
 
 object Beam {
@@ -18,6 +22,8 @@ object Beam {
      * Run task at specified node and waits for result.
      */
     def at[U, A](node: X#Node[U])(task: RIO[U, A]): RIO[R, A]
+
+    def key[U: ClassTag](id: String): RIO[R, X#NodeKey[U]]
 
     /**
      * List available nodes by given key.
@@ -36,13 +42,6 @@ object Beam {
 }
 
 trait BeamsSyntax[X <: Backend] extends Beam.Service[Beam[X], X] {
-
-  implicit class TaskExtension[U, A](task: RIO[U, A]) {
-    def @@(node: X#Node[U]): RIO[Beam[X], A] = ZIO.accessM(_.beam.at(node)(task))
-
-    def aaa(): Unit = ()
-  }
-
   override def at[U, A](node: X#Node[U])(task: RIO[U, A]): RIO[Beam[X], A] =
     ZIO.accessM(_.beam.at(node)(task))
 
