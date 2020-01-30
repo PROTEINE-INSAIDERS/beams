@@ -18,8 +18,8 @@ lazy val commonScalacOptions = Seq(
   //"-Ywarn-dead-code",
   "-Ywarn-numeric-widen",
   "-Ywarn-value-discard",
- // "-Xfatal-warnings",
- // "-deprecation",
+  // "-Xfatal-warnings",
+  // "-deprecation",
   "-Ypartial-unification")
 
 lazy val commonSettings = Seq(
@@ -53,7 +53,8 @@ lazy val mapReduceExample = (project in file("examples/map-reduce"))
 lazy val helloWorld = (project in file("examples/hello-world"))
   .settings(commonSettings,
     libraryDependencies ++= Seq(
-      "com.github.scopt" %% "scopt" % "4.0.0-RC2"
+      "com.github.scopt" %% "scopt" % "4.0.0-RC2",
+      "ch.qos.logback" % "logback-classic" % "1.2.3"
     ))
   .dependsOn(beams)
 

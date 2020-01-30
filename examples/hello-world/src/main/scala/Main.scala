@@ -9,12 +9,7 @@ import zio.console._
 
 case class Config(serviceKey: String)
 
-trait AppEnv extends Console {
-  val config: Config
-}
-
-trait NodeEnv extends Beam[AkkaBackend] with Console {
-}
+trait NodeEnv extends Beam[AkkaBackend] with Console
 
 object Main extends App {
   private def nodeNames = Seq("Alice", "Bob", "Master")
@@ -37,30 +32,42 @@ object Main extends App {
         .text("Service key"))
   }
 
-  private val program: ZIO[AppEnv, Throwable, Unit] = for {
-    env <- ZIO.access[AppEnv](_.config)
-    _ <- putStrLn(s"I am ${env.serviceKey}.")
-    k <- key[AppEnv](env.serviceKey)
-    _ <- root(_.map(b => new AppEnv {
-      override val config: Config = env.copy()
-      override val console: Console.Service[Any] = Console.Live.console
-    }), Some(k), setup = setup(9000 + nodeNames.indexOf(env.serviceKey))) {
-      ???
-    }
-  } yield ()
-
   private def setup(port: Int) = ActorSystemSetup(
     BootstrapSetup(ConfigFactory.load().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port))))
 
+  private def nodeEnv(beamEnv: Beam[AkkaBackend]): NodeEnv = new NodeEnv {
+    override val console: Console.Service[Any] = Console.Live.console
+
+    override def beam: Beam.Service[Any, AkkaBackend] = beamEnv.beam
+  }
+
+  private def slave(k: String): RIO[NodeEnv, Unit] = for {
+    master <- key[NodeEnv]("Master") >>= anyNode
+  } yield ()
+
+  private def master(k: String): RIO[NodeEnv, Unit] = for {
+    alice <- key[NodeEnv]("Alice") >>= anyNode
+    _ <- at(alice)(ZIO.succeed(1))
+    bob <- key[NodeEnv]("Bob") >>= anyNode
+    _ <- at(bob)(ZIO.succeed(2))
+  } yield ()
+
+  private def program(config: Config): Task[Unit] = for {
+    setup <- IO(setup(9000 + nodeNames.indexOf(config.serviceKey)))
+    result <- root(_.map(nodeEnv), setup = setup) {
+      if (config.serviceKey == "Master") {
+        ???
+      } else {
+        ???
+      }
+    }
+  } yield result
 
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
     (IO {
       OParser.parse(parser, args, Config(""))
     } >>= {
-      case Some(cfg) => program.provideSome[ZEnv](z => new AppEnv {
-        override val config: Config = cfg
-        override val console: Console.Service[Any] = z.console
-      }) *> ZIO.succeed(0)
+      case Some(cfg) => program(cfg) *> ZIO.succeed(0)
       case None => ZIO.succeed(1)
     }).catchAll(error => putStrLn(error.toString) *> ZIO.succeed(1))
 }

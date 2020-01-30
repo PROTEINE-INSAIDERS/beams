@@ -5,6 +5,7 @@ import akka.actor.typed.receptionist._
 import beams._
 import zio._
 
+import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
 private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends Beam[AkkaBackend] {
@@ -31,8 +32,9 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
         }
       } yield result
 
-    override def node[U](f: Runtime[Beam[AkkaBackend]] => Runtime[U], key: Option[NodeActor.Key[U]]): TaskManaged[NodeActor.Ref[U]] =
-      Managed.make(spawn(NodeActor(f), key)) { node => Task.effectTotal(node ! NodeActor.Stop) }
+    override def key[U: ClassTag](id: String): RIO[Any, ServiceKey[NodeActor.Command[U]]] = IO {
+      ServiceKey[NodeActor.Command[U]](id)
+    }
 
     override def listing[U](key: ServiceKey[NodeActor.Command[U]]): TaskManaged[Queue[Set[NodeActor.Ref[U]]]] =
       Managed.make {
@@ -43,5 +45,9 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
         } yield (queue, listener)
       } { case (_, listener) => Task.effectTotal(listener ! ReceptionistListener.Stop)
       }.map { case (queue, _) => queue }
+
+    override def node[U](f: Runtime[Beam[AkkaBackend]] => Runtime[U], key: Option[NodeActor.Key[U]]): TaskManaged[NodeActor.Ref[U]] =
+      Managed.make(spawn(NodeActor(f), key)) { node => Task.effectTotal(node ! NodeActor.Stop) }
+
   }
 }

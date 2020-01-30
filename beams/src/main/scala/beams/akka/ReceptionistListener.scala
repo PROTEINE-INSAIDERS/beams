@@ -12,9 +12,10 @@ private[akka] object ReceptionistListener {
   def apply[T](
                 key: ServiceKey[T],
                 queue: Queue[Set[ActorRef[T]]],
-                runtime: Runtime[_]
+                runtime: Runtime[Any]
               ): Behavior[Any] =
     Behaviors.setup { ctx =>
+      //TODO: обработка ошибок?
       ctx.system.receptionist ! Receptionist.Subscribe(key, ctx.self)
       Behaviors.receiveMessagePartial {
         case key.Listing(services) =>

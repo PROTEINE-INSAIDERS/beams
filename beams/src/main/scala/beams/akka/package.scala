@@ -4,14 +4,12 @@ import _root_.akka.actor.BootstrapSetup
 import _root_.akka.actor.setup._
 import _root_.akka.actor.typed._
 import _root_.akka.actor.typed.receptionist._
+import _root_.akka.actor.typed.scaladsl._
 import zio._
 
-import scala.reflect._
+import scala.util.control.NonFatal
 
 package object akka extends BeamsSyntax[AkkaBackend] {
-  //TODO: перенести в beam!
-  def key[R: ClassTag](id: String): Task[NodeActor.Key[R]] = IO(ServiceKey[NodeActor.Command[R]](id))
-
   /**
    * Create root node and run task on it.
    */
@@ -20,23 +18,21 @@ package object akka extends BeamsSyntax[AkkaBackend] {
                  name: String = "beams",
                  setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
                  props: Props = Props.empty
-                )(task: RIO[R, A]): Task[A] = {
-    ???
+                )(task: RIO[R, A]): Task[A] = IO {
+    val system = ActorSystem(NodeActor(f), name, setup, props)
+    key.foreach(system.receptionist ! Receptionist.Register(_, system))
+    system
+  }.bracket { system => IO.effectTotal(system ! NodeActor.Stop) } { system =>
+    AkkaBeam(system).beam.at(system)(task)
   }
 
-  /*
-  Managed.make {
-  for {
-    system <- IO {
-      val system = ActorSystem(NodeActor(f), name, setup, props)
-      key.foreach(system.receptionist ! Receptionist.Register(_, system))
-      system
+  private[akka] def guard[T](cb: Task[Nothing] => Unit)(behavior: => Behavior[T]): Behavior[T] = {
+    try {
+      behavior
+    } catch {
+      case NonFatal(e) =>
+        cb(Task.fail(e))
+        Behaviors.stopped
     }
-    _ <- IO.runtime
-  } yield system
-} { system =>
-  Task.effectTotal {
-    system ! NodeActor.Stop
   }
-}.map(AkkaBeam(_)) */
 }
