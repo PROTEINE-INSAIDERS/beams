@@ -1,4 +1,4 @@
-package beams.akka.debug
+package beams.backend.akka.debug
 
 import akka.actor.ExtendedActorSystem
 import akka.serialization.BaseSerializer

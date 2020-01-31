@@ -1,18 +1,16 @@
 import akka.actor.BootstrapSetup
 import akka.actor.setup.ActorSystemSetup
 import beams._
-import beams.akka._
+import beams.backend.akka._
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import scopt._
 import zio._
 import zio.console._
 
-case class Config(serviceKey: String)
-
-trait NodeEnv extends Beam[AkkaBackend] with Console
-
 object Main extends App {
   private def nodeNames = Seq("Alice", "Bob", "Master")
+
+  case class Config(serviceKey: String)
 
   private val parser: OParser[Unit, Config] = {
     val builder: OParserBuilder[Config] = OParser.builder[Config]
@@ -35,39 +33,50 @@ object Main extends App {
   private def setup(port: Int) = ActorSystemSetup(
     BootstrapSetup(ConfigFactory.load().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port))))
 
-  private def nodeEnv(beamEnv: Beam[AkkaBackend]): NodeEnv = new NodeEnv {
+  trait NodeEnv extends Beam[AkkaBackend] with Console {
+    val config: Config
+  }
+
+  private def nodeEnv(beamEnv: Beam[AkkaBackend], cfg: Config): NodeEnv = new NodeEnv {
     override val console: Console.Service[Any] = Console.Live.console
 
     override def beam: Beam.Service[Any, AkkaBackend] = beamEnv.beam
+
+    override val config: Config = cfg
   }
 
-  private def slave(k: String): RIO[NodeEnv, Unit] = for {
-    master <- key[NodeEnv]("Master") >>= anyNode
+  private def master: RIO[NodeEnv, Unit] = for {
+    _ <- announceNode("Master")
+    alice <- anyNode[NodeEnv]("Alice")
+    _ <- atNode(alice) {
+      ZIO.access[NodeEnv](_.config.serviceKey).flatMap(key => putStrLn(s"running at $key"))
+    }
+    bob <- anyNode[NodeEnv]("Bob")
+    _ <- atNode(bob) {
+      ZIO.access[NodeEnv](_.config.serviceKey).flatMap(key => putStrLn(s"running at $key"))
+    }
   } yield ()
 
-  private def master(k: String): RIO[NodeEnv, Unit] = for {
-    alice <- key[NodeEnv]("Alice") >>= anyNode
-    _ <- at(alice)(ZIO.succeed(1))
-    bob <- key[NodeEnv]("Bob") >>= anyNode
-    _ <- at(bob)(ZIO.succeed(2))
+  private def slave: RIO[NodeEnv, Unit] = for {
+    master <- anyNode[NodeEnv]("Master")
+    _ <- ZIO.access[NodeEnv](_.config.serviceKey).flatMap(announceNode)
+    _ <- deathwatchNode(master)
   } yield ()
 
   private def program(config: Config): Task[Unit] = for {
     setup <- IO(setup(9000 + nodeNames.indexOf(config.serviceKey)))
-    result <- root(_.map(nodeEnv), setup = setup) {
+    result <- root(_.map(nodeEnv(_, config)), setup = setup) {
       if (config.serviceKey == "Master") {
-        ???
+        master
       } else {
-        ???
+        slave
       }
     }
   } yield result
 
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
-    (IO {
-      OParser.parse(parser, args, Config(""))
-    } >>= {
+    IO(OParser.parse(parser, args, Config(""))).flatMap {
       case Some(cfg) => program(cfg) *> ZIO.succeed(0)
       case None => ZIO.succeed(1)
-    }).catchAll(error => putStrLn(error.toString) *> ZIO.succeed(1))
+    }.catchAll(error => putStrLn(error.toString) *> ZIO.succeed(1))
 }

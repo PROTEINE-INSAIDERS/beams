@@ -1,4 +1,4 @@
-package beams.akka
+package beams.backend.akka
 
 import akka.actor.typed._
 import akka.actor.typed.scaladsl._
