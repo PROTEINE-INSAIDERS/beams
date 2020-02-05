@@ -21,7 +21,7 @@ package object akka extends BeamsSyntax[AkkaBackend] {
     IO(ActorSystem(NodeActor(f), name, setup, props)).bracket {
       system => IO.effectTotal(system ! NodeActor.Stop)
     } { system =>
-      AkkaBeam(system).beam.atNode(system)(task)
+      AkkaBeam(system).beam.at(system)(task)
     }
 
   private[akka] def replyTo[A, T](cb: Task[A] => Unit)(implicit ctx: ActorContext[T]): ActorRef[A] = {

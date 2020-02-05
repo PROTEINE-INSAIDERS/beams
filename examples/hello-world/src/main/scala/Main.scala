@@ -46,21 +46,21 @@ object Main extends App {
   }
 
   private def master: RIO[NodeEnv, Unit] = for {
-    _ <- announceNode("Master")
+    _ <- announce("Master")
     alice <- anyNode[NodeEnv]("Alice")
-    _ <- atNode(alice) {
+    _ <- at(alice) {
       ZIO.access[NodeEnv](_.config.serviceKey).flatMap(key => putStrLn(s"running at $key"))
     }
     bob <- anyNode[NodeEnv]("Bob")
-    _ <- atNode(bob) {
+    _ <- at(bob) {
       ZIO.access[NodeEnv](_.config.serviceKey).flatMap(key => putStrLn(s"running at $key"))
     }
   } yield ()
 
   private def slave: RIO[NodeEnv, Unit] = for {
     master <- anyNode[NodeEnv]("Master")
-    _ <- ZIO.access[NodeEnv](_.config.serviceKey).flatMap(announceNode)
-    _ <- deathwatchNode(master)
+    _ <- ZIO.access[NodeEnv](_.config.serviceKey).flatMap(announce)
+    _ <- deathwatch(master)
   } yield ()
 
   private def program(config: Config): Task[Unit] = for {

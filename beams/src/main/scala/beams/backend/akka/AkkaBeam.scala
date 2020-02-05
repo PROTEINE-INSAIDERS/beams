@@ -13,7 +13,7 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
       nodeActor ! NodeActor.Spawn(behavior, cb)
     }
 
-    override def atNode[U, A](node: NodeActor.Ref[U])(task: RIO[U, A]): Task[A] = for {
+    override def at[U, A](node: NodeActor.Ref[U])(task: RIO[U, A]): Task[A] = for {
       runtime <- ZIO.runtime[Any]
       result <- guardAsyncInterrupt { (cb: Task[A] => Unit) =>
         val replyTo = runtime.unsafeRun(spawn(ReplyToActor(node, cb)))
@@ -22,7 +22,7 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
       }
     } yield result
 
-    override def deathwatchNode(node: NodeActor.Ref[Any]): RIO[Any, Unit] = for {
+    override def deathwatch(node: NodeActor.Ref[Any]): RIO[Any, Unit] = for {
       runtime <- ZIO.runtime[Any]
       _ <- guardAsyncInterrupt { (cb: Task[Unit] => Unit) =>
         val deathwatch = runtime.unsafeRun(spawn(DeathWatch(node, cb)))
@@ -30,7 +30,7 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
       }
     } yield ()
 
-    override def listNodes[U](key: String): TaskManaged[Queue[Set[NodeActor.Ref[U]]]] =
+    override def listing[U](key: String): TaskManaged[Queue[Set[NodeActor.Ref[U]]]] =
       Managed.make {
         for {
           queue <- zio.Queue.unbounded[Set[NodeActor.Ref[U]]]
@@ -40,10 +40,10 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
       } { case (_, listener) => Task.effectTotal(listener ! ReceptionistListener.Stop)
       }.map { case (queue, _) => queue }
 
-    override def createNode[U](f: Runtime[Beam[AkkaBackend]] => Runtime[U]): TaskManaged[NodeActor.Ref[U]] =
+    override def node[U](f: Runtime[Beam[AkkaBackend]] => Runtime[U]): TaskManaged[NodeActor.Ref[U]] =
       Managed.make(spawn(NodeActor(f))) { node => Task.effectTotal(node ! NodeActor.Stop) }
 
-    override def announceNode(key: String): Task[Unit] = guardAsync { cb =>
+    override def announce(key: String): Task[Unit] = guardAsync { cb =>
       nodeActor ! NodeActor.Register(key, cb)
     }
   }
