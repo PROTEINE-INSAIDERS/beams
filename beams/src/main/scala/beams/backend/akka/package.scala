@@ -6,6 +6,7 @@ import _root_.akka.actor.typed._
 import _root_.akka.actor.typed.scaladsl._
 import beams._
 import zio._
+import _root_.akka.cluster.typed._
 
 import scala.util.control.NonFatal
 

@@ -1,16 +1,17 @@
 package beams.backend.akka
 
 import akka.actor.typed._
-import akka.actor.typed.receptionist._
 import beams._
 import zio._
-
-import scala.reflect.ClassTag
 
 private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends Beam[AkkaBackend] {
   override def beam: Beam.Service[Any, AkkaBackend] = new Beam.Service[Any, AkkaBackend] {
     private def spawn[T](behavior: Behavior[T]): Task[ActorRef[T]] = guardAsync { cb =>
       nodeActor ! NodeActor.Spawn(behavior, cb)
+    }
+
+    override def announce(key: String): Task[Unit] = guardAsync { cb =>
+      nodeActor ! NodeActor.Register(key, cb)
     }
 
     override def at[U, A](node: NodeActor.Ref[U])(task: RIO[U, A]): Task[A] = for {
@@ -43,8 +44,12 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
     override def node[U](f: Runtime[Beam[AkkaBackend]] => Runtime[U]): TaskManaged[NodeActor.Ref[U]] =
       Managed.make(spawn(NodeActor(f))) { node => Task.effectTotal(node ! NodeActor.Stop) }
 
-    override def announce(key: String): Task[Unit] = guardAsync { cb =>
-      nodeActor ! NodeActor.Register(key, cb)
-    }
+    /*
+    override def singleton[U, A](f: Runtime[Beam[AkkaBackend]] => Runtime[U])(task: RIO[U, A]): Task[Unit] = for {
+      _ <- IO {
+        ???
+      }
+    } yield ()
+     */
   }
 }

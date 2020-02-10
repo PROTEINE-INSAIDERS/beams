@@ -4,6 +4,7 @@ import akka.actor.typed._
 import akka.actor.typed.receptionist.Receptionist.Registered
 import akka.actor.typed.receptionist._
 import akka.actor.typed.scaladsl._
+import akka.cluster.typed.{ClusterSingleton, SingletonActor}
 import zio._
 import zio.internal.PlatformLive
 
@@ -23,6 +24,8 @@ object NodeActor {
 
   private[akka] final case class Register(key: String, cb: Task[Unit] => Unit) extends Command[Any] with NonSerializableMessage
 
+  private[akka] final case class Singleton[R, A]() extends Command[R] with NonSerializableMessage
+
   private[akka] object Stop extends Command[Any] with NonSerializableMessage
 
   private[akka] def apply[R](f: Runtime[AkkaBeam] => Runtime[R]): Behavior[Command[R]] = Behaviors.setup { implicit ctx =>
@@ -40,6 +43,14 @@ object NodeActor {
         cb(Task.succeed(ctx.spawnAnonymous(behavior)))
         Behaviors.same
       }
+      case Singleton() =>
+
+        val singletonManager = ClusterSingleton(ctx.system)
+
+        val aaa = singletonManager.init(SingletonActor(???, ???))
+
+        Behaviors.same
+
       case Stop =>
         Behaviors.stopped
     }

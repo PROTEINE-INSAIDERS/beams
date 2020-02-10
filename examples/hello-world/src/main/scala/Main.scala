@@ -33,19 +33,9 @@ object Main extends App {
   private def setup(port: Int) = ActorSystemSetup(
     BootstrapSetup(ConfigFactory.load().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port))))
 
-  trait NodeEnv extends Beam[AkkaBackend] with Console {
-    val config: Config
-  }
+  class NodeEnv(beam: Beam[AkkaBackend], val config: Config) extends Beam.Wrapper[AkkaBackend](beam) with Console.Live
 
-  private def nodeEnv(beamEnv: Beam[AkkaBackend], cfg: Config): NodeEnv = new NodeEnv {
-    override val console: Console.Service[Any] = Console.Live.console
-
-    override def beam: Beam.Service[Any, AkkaBackend] = beamEnv.beam
-
-    override val config: Config = cfg
-  }
-
-  private def master: RIO[NodeEnv, Unit] = for {
+  private def master = for {
     _ <- announce("Master")
     alice <- anyNode[NodeEnv]("Alice")
     _ <- at(alice) {
@@ -57,7 +47,7 @@ object Main extends App {
     }
   } yield ()
 
-  private def slave: RIO[NodeEnv, Unit] = for {
+  private def slave = for {
     master <- anyNode[NodeEnv]("Master")
     _ <- ZIO.access[NodeEnv](_.config.serviceKey).flatMap(announce)
     _ <- deathwatch(master)
@@ -65,7 +55,7 @@ object Main extends App {
 
   private def program(config: Config): Task[Unit] = for {
     setup <- IO(setup(9000 + nodeNames.indexOf(config.serviceKey)))
-    result <- root(_.map(nodeEnv(_, config)), setup = setup) {
+    result <- root(_.map(new NodeEnv(_, config)), setup = setup) {
       if (config.serviceKey == "Master") {
         master
       } else {
@@ -78,5 +68,5 @@ object Main extends App {
     IO(OParser.parse(parser, args, Config(""))).flatMap {
       case Some(cfg) => program(cfg) *> ZIO.succeed(0)
       case None => ZIO.succeed(1)
-    }.catchAll(error => putStrLn(error.toString) *> ZIO.succeed(1))
+    }.catchAll(error => IO.effectTotal(error.printStackTrace()) *> ZIO.succeed(1))
 }
