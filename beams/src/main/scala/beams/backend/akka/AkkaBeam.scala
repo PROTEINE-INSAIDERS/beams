@@ -2,18 +2,18 @@ package beams.backend.akka
 
 import akka.actor.typed._
 import beams._
+import beams.discovery.{Discovery, DiscoveryService}
 import zio._
 
-private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends Beam[AkkaBackend] {
+private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any])
+  extends Beam[AkkaBackend]
+    with Discovery[AkkaBackend] {
+
+  private def spawn[T](behavior: Behavior[T]): Task[ActorRef[T]] = guardAsync { cb =>
+    nodeActor ! NodeActor.Spawn(behavior, cb)
+  }
+
   override def beam: Beam.Service[Any, AkkaBackend] = new Beam.Service[Any, AkkaBackend] {
-    private def spawn[T](behavior: Behavior[T]): Task[ActorRef[T]] = guardAsync { cb =>
-      nodeActor ! NodeActor.Spawn(behavior, cb)
-    }
-
-    override def announce(key: String): Task[Unit] = guardAsync { cb =>
-      nodeActor ! NodeActor.Register(key, cb)
-    }
-
     override def at[U, A](node: NodeActor.Ref[U])(task: RIO[U, A]): Task[A] = for {
       runtime <- ZIO.runtime[Any]
       result <- guardAsyncInterrupt { (cb: Task[A] => Unit) =>
@@ -31,7 +31,22 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
       }
     } yield ()
 
-    override def listing[U](key: String): TaskManaged[Queue[Set[NodeActor.Ref[U]]]] =
+    override def node[U](f: Runtime[Beam[AkkaBackend]] => Runtime[U]): TaskManaged[NodeActor.Ref[U]] =
+      Managed.make(spawn(NodeActor(f))) { node => Task.effectTotal(node ! NodeActor.Stop) }
+  }
+
+  override def discovery: DiscoveryService[Any, AkkaBackend] = new DiscoveryService[Any, AkkaBackend] {
+    /**
+     * Make current node discoverable by given key.
+     */
+    override def announce(key: String): RIO[Any, Unit] = guardAsync { cb =>
+      nodeActor ! NodeActor.Register(key, cb)
+    }
+
+    /**
+     * List available nodes by given key.
+     */
+    override def listing[U](key: String): RManaged[Any, Queue[Set[NodeActor.Ref[U]]]] =
       Managed.make {
         for {
           queue <- zio.Queue.unbounded[Set[NodeActor.Ref[U]]]
@@ -40,16 +55,5 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any]) extends B
         } yield (queue, listener)
       } { case (_, listener) => Task.effectTotal(listener ! ReceptionistListener.Stop)
       }.map { case (queue, _) => queue }
-
-    override def node[U](f: Runtime[Beam[AkkaBackend]] => Runtime[U]): TaskManaged[NodeActor.Ref[U]] =
-      Managed.make(spawn(NodeActor(f))) { node => Task.effectTotal(node ! NodeActor.Stop) }
-
-    /*
-    override def singleton[U, A](f: Runtime[Beam[AkkaBackend]] => Runtime[U])(task: RIO[U, A]): Task[Unit] = for {
-      _ <- IO {
-        ???
-      }
-    } yield ()
-     */
   }
 }

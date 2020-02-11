@@ -33,7 +33,8 @@ object Main extends App {
   private def setup(port: Int) = ActorSystemSetup(
     BootstrapSetup(ConfigFactory.load().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port))))
 
-  class NodeEnv(beam: Beam[AkkaBackend], val config: Config) extends Beam.Wrapper[AkkaBackend](beam) with Console.Live
+  class NodeEnv(beam: Beam[AkkaBackend], val config: Config)
+    extends Beam.Wrapper[AkkaBackend](beam) with Console.Live
 
   private def master = for {
     _ <- announce("Master")

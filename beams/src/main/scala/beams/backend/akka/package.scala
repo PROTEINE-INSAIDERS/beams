@@ -5,12 +5,12 @@ import _root_.akka.actor.setup._
 import _root_.akka.actor.typed._
 import _root_.akka.actor.typed.scaladsl._
 import beams._
+import beams.discovery._
 import zio._
-import _root_.akka.cluster.typed._
 
 import scala.util.control.NonFatal
 
-package object akka extends BeamsSyntax[AkkaBackend] {
+package object akka extends BeamsSyntax[AkkaBackend] with DiscoverySyntax[AkkaBackend] {
   /**
    * Create root node and run task on it.
    */

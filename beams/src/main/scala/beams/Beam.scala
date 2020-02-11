@@ -1,12 +1,13 @@
 package beams
 
+import beams.discovery.{Discovery, DiscoveryService}
 import zio._
 
 trait Backend {
   type Node[+_]
 }
 
-trait Beam[X <: Backend] {
+trait Beam[X <: Backend] extends Discovery[X] {
   def beam: Beam.Service[Any, X]
 }
 
@@ -15,7 +16,7 @@ object Beam {
   //TODO: Подумать о декомпозиции сервиса. 
   // 1.
   trait Service[R, X <: Backend] {
-    def announce(key: String): RIO[R, Unit]
+    //def announce(key: String): RIO[R, Unit]
 
     /**
      * Run task at specified node and waits for result.
@@ -27,7 +28,7 @@ object Beam {
     /**
      * List available nodes by given key.
      */
-    def listing[U](key: String): RManaged[R, Queue[Set[X#Node[U]]]]
+    //def listing[U](key: String): RManaged[R, Queue[Set[X#Node[U]]]]
 
     /**
      * Create a child node which can run tasks.
@@ -51,13 +52,15 @@ object Beam {
 
   class Wrapper[X <: Backend](b: Beam[X]) extends Beam[X] {
     override def beam: Service[Any, X] = b.beam
+
+    override def discovery: DiscoveryService[Any, X] = b.discovery
   }
 
 }
 
 trait BeamsSyntax[X <: Backend] extends Beam.Service[Beam[X], X] {
-  override def announce(key: String): RIO[Beam[X], Unit] =
-    RIO.accessM(_.beam.announce(key))
+  //override def announce(key: String): RIO[Beam[X], Unit] =
+  //  RIO.accessM(_.beam.announce(key))
 
   override def at[U, A](node: X#Node[U])(task: RIO[U, A]): RIO[Beam[X], A] =
     RIO.accessM(_.beam.at(node)(task))
@@ -65,24 +68,24 @@ trait BeamsSyntax[X <: Backend] extends Beam.Service[Beam[X], X] {
   override def deathwatch(node: X#Node[Any]): RIO[Beam[X], Unit] =
     RIO.accessM(_.beam.deathwatch(node))
 
-  override def listing[U](key: String): RManaged[Beam[X], Queue[Set[X#Node[U]]]] =
-    ZManaged.environment[Beam[X]].flatMap(_.beam.listing(key))
+  // override def listing[U](key: String): RManaged[Beam[X], Queue[Set[X#Node[U]]]] =
+  //  ZManaged.environment[Beam[X]].flatMap(_.beam.listing(key))
 
   override def node[U](f: Runtime[Beam[X]] => Runtime[U]): RManaged[Beam[X], X#Node[U]] =
     ZManaged.environment[Beam[X]].flatMap(_.beam.node(f))
 
-//  override def singleton[U, A](f: Runtime[Beam[X]] => Runtime[U])(task: RIO[U, A]): RIO[Beam[X], Unit] =
-//    RIO.accessM(_.beam.singleton(f)(task))
+  //  override def singleton[U, A](f: Runtime[Beam[X]] => Runtime[U])(task: RIO[U, A]): RIO[Beam[X], Unit] =
+  //    RIO.accessM(_.beam.singleton(f)(task))
 
   /**
    * Wait till some nodes with given environment will become available.
    */
-  def someNode[U](key: String): RIO[Beam[X], Set[X#Node[U]]] = ZIO.accessM { r =>
-    r.beam.listing[U](key).use(_.take.repeat(Schedule.doUntil(_.nonEmpty)))
-  }
+  //def someNode[U](key: String): RIO[Beam[X], Set[X#Node[U]]] = ZIO.accessM { r =>
+  //  r.beam.listing[U](key).use(_.take.repeat(Schedule.doUntil(_.nonEmpty)))
+  //}
 
   /**
    * Wait till any node with given environment will become available.
    */
-  def anyNode[U](key: String): RIO[Beam[X], X#Node[U]] = someNode[U](key).map(_.head)
+  // def anyNode[U](key: String): RIO[Beam[X], X#Node[U]] = someNode[U](key).map(_.head)
 }
