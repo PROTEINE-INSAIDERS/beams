@@ -48,7 +48,7 @@ object NodeActor {
 
       }
       case Exec(task, replyTo) =>
-        val taskActor = ctx.spawnAnonymous(RemoteTaskActor(runtime, task, replyTo))
+        val taskActor = ctx.spawnAnonymous(TaskActor(runtime, task, replyTo, replyTo))
         replyTo ! TaskReplyToActor.Register(taskActor)
         Behaviors.same
       case Register(key, cb) => guardBehavior(cb, Behaviors.same[Command[R]]) {

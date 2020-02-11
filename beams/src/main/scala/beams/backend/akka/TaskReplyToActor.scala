@@ -12,7 +12,7 @@ private[akka] object TaskReplyToActor {
   /**
    * Register task actor reference. This message is sent once by the executor actor.
    */
-  final case class Register[A](ref: RemoteTaskActor.Ref[A]) extends Command[A] with SerializableMessage
+  final case class Register[A](ref: TaskActor.Ref[A]) extends Command[A] with SerializableMessage
 
   /**
    * Task completed. This message is sent once by the task actor.
@@ -54,7 +54,7 @@ private[akka] object TaskReplyToActor {
               ctx.unwatch(task)
               Behaviors.stopped
             case Interrupt => // Interrupt message received. Cancel task, unwatch and stop.
-              task ! RemoteTaskActor.Interrupt
+              task ! TaskActor.Interrupt
               ctx.unwatch(task)
               Behaviors.stopped
             case TaskTerminated => // Task actor terminated before completion. Propagate error and stop.
@@ -79,7 +79,7 @@ private[akka] object TaskReplyToActor {
         case Interrupt => // Interrupt before register. We will attemp to wait register message to cancel task.
           Behaviors.receiveMessagePartial {
             case Register(task) => // Task registered. Send interrupt message unwatch and stop.
-              task ! RemoteTaskActor.Interrupt
+              task ! TaskActor.Interrupt
               ctx.unwatch(executor)
               Behaviors.stopped
             case Done(_) => // Task completed (before registration). Ignore task result, and further wait for the register message.
