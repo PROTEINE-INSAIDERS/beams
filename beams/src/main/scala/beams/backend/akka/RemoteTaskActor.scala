@@ -4,7 +4,7 @@ import akka.actor.typed._
 import akka.actor.typed.scaladsl._
 import zio._
 
-private[akka] object TaskActor {
+private[akka] object RemoteTaskActor {
   type Ref[A] = ActorRef[Command[A]]
 
   sealed trait Command[+A]
@@ -24,8 +24,12 @@ private[akka] object TaskActor {
    */
   object ReplyToTerminated extends Command[Nothing]
 
-  //TODO: возможно добавить try-catch и перенаправлять ошибки в replyTo
-  def apply[R, A](runtime: Runtime[R], task: RIO[R, A], replyTo: ReplyToActor.Ref[A]): Behavior[Command[A]] =
+  /**
+   * Execute interruptible task submitted by remote node and reply to [[TaskReplyToActor]]
+   *
+   * This actor will watch {@code replyTo} actor and interrupt the task if {@code replyTo} actor terminated.
+   */
+  def apply[R, A](runtime: Runtime[R], task: RIO[R, A], replyTo: TaskReplyToActor.Ref[A]): Behavior[Command[A]] =
     Behaviors.setup { ctx =>
       ctx.watchWith(replyTo, ReplyToTerminated)
       val fiber = runtime.unsafeRun(task.fork)
@@ -33,7 +37,7 @@ private[akka] object TaskActor {
 
       Behaviors.receiveMessagePartial {
         case Done(exit) => // Task completed.
-          replyTo ! ReplyToActor.Done(exit)
+          replyTo ! TaskReplyToActor.Done(exit)
           ctx.unwatch(replyTo)
           Behaviors.stopped
         case Interrupt => // Interrupt task

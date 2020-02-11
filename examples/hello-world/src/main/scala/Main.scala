@@ -8,7 +8,7 @@ import zio._
 import zio.console._
 
 object Main extends App {
-  private def nodeNames = Seq("Alice", "Bob", "Master")
+  private def nodeNames = Seq("Master", "Alice", "Bob")
 
   case class Config(serviceKey: String)
 

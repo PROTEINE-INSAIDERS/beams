@@ -5,12 +5,11 @@ import _root_.akka.actor.setup._
 import _root_.akka.actor.typed._
 import _root_.akka.actor.typed.scaladsl._
 import beams._
-import beams.discovery._
 import zio._
 
 import scala.util.control.NonFatal
 
-package object akka extends BeamsSyntax[AkkaBackend] with DiscoverySyntax[AkkaBackend] {
+package object akka extends Beam.Syntax[AkkaBackend] {
   /**
    * Create root node and run task on it.
    */
@@ -22,15 +21,8 @@ package object akka extends BeamsSyntax[AkkaBackend] with DiscoverySyntax[AkkaBa
     IO(ActorSystem(NodeActor(f), name, setup, props)).bracket {
       system => IO.effectTotal(system ! NodeActor.Stop)
     } { system =>
-      AkkaBeam(system).beam.at(system)(task)
+      AkkaBeam(system, system).execution.at(system)(task)
     }
-
-  private[akka] def replyTo[A, T](cb: Task[A] => Unit)(implicit ctx: ActorContext[T]): ActorRef[A] = {
-    ctx.spawnAnonymous(Behaviors.receiveMessage { a: A =>
-      cb(Task.succeed(a))
-      Behaviors.stopped[A]
-    })
-  }
 
   @inline
   @specialized
