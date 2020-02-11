@@ -30,15 +30,15 @@ private[akka] object TaskActor {
   }
 
   /**
-    * Execute interruptible task submitted by the remote node and reply to {@code replyTo} actor.
+    * Execute interruptible task submitted by the remote node and reply to the {@code replyTo} actor.
     */
   def apply[R, A](
                    runtime: Runtime[R],
                    task: RIO[R, A],
                    replyTo: TaskReplyToActor.Ref[A],
-                   deathWatch: ActorRef[Nothing]*
+                   deathWatches: ActorRef[Nothing]*
                  ): Behavior[Command[A]] =
-    apply(runtime, task, { t => replyTo ! TaskReplyToActor.Done(runtime.unsafeRunSync(t)) }, deathWatch: _*)
+    apply(runtime, task, { t => replyTo ! TaskReplyToActor.Done(runtime.unsafeRunSync(t)) }, deathWatches: _*)
 
   /**
     * Execute interruptible task with local callback.
@@ -47,10 +47,10 @@ private[akka] object TaskActor {
                    runtime: Runtime[R],
                    task: RIO[R, A],
                    cb: Task[A] => Unit,
-                   deathWatch: ActorRef[Nothing]*
+                   deathWatches: ActorRef[Nothing]*
                  ): Behavior[Command[A]] = Behaviors.setup { ctx =>
     guardBehavior(cb) {
-      deathWatch.foreach { actor => ctx.watchWith(actor, ActorTerminated(actor)) }
+      deathWatches.foreach { actor => ctx.watchWith(actor, ActorTerminated(actor)) }
 
       val taskFiber = runtime.unsafeRun(task.fork)
       runtime.unsafeRunAsync(taskFiber.join)(ctx.self ! Done(_))
@@ -59,18 +59,18 @@ private[akka] object TaskActor {
         case ActorTerminated(actor) => guardBehavior(cb) {
           cb(Task.fail(new ActorTerminatedException("Essential actor terminated before completing the task.", actor)))
           runtime.unsafeRun(taskFiber.interrupt)
-          deathWatch.foreach(ctx.unwatch)
+          deathWatches.foreach(ctx.unwatch)
           interrupting
         }
         case Done(exit) => guardBehavior(cb) {
           cb(Task.done(exit))
-          deathWatch.foreach(ctx.unwatch)
+          deathWatches.foreach(ctx.unwatch)
           Behaviors.stopped
         }
         case Interrupt => guardBehavior(cb) {
           // cb(Task.interrupt) The interrupt message is sent by the reply-to actor in response to interruption. No need to invoke callback here.
           runtime.unsafeRun(taskFiber.interrupt)
-          deathWatch.foreach(ctx.unwatch)
+          deathWatches.foreach(ctx.unwatch)
           interrupting
         }
       }
