@@ -1,105 +1,73 @@
 import akka.actor.BootstrapSetup
-import akka.actor.setup._
-import beams.Beam
-import beams.akka._
-import com.typesafe.config._
-import scalaz.zio._
-import scalaz.zio.console._
+import akka.actor.setup.ActorSystemSetup
+import beams._
+import beams.backend.akka._
+import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
+import scopt._
+import zio._
+import zio.console._
 
-/**
-  * This is an adaptation of introductory distributed program taken from Unison programming language (https://github.com/unisonweb/unison)
-  */
 object Main extends App {
+  private def nodeNames = Seq("Master", "Alice", "Bob")
 
-  /**
-    * Node is the basic concept of Вeams framework. Nodes are capable to run Вeams tasks and provide local environment
-    * which is accessible by task running on current node. This environment provides Вeams services itself by extending
-    * [[beams.akka.AkkaBeam]] as well as ZIO's console to print text messages.
-    */
-  abstract class NodeEnv[N[+ _]] extends Beam[N] with Console.Live
+  case class Config(serviceKey: String)
 
-  /**
-    * Each node can have it's onw environment type to provide node specific services. In this example we will create two
-    * different type of environments for Alice and Bob. This fact however will not be used any further. Alice's and Bob's
-    * environments are semantically identical and created for demonstration purposes only.
-    */
-  final class AliceEnv[N[+ _]](override val beam: Beam.Service[Any, N]) extends NodeEnv[N]
-
-  final class BobEnv[N[+ _]](override val beam: Beam.Service[Any, N]) extends NodeEnv[N]
-
-  /**
-    * Beams implied for distributed programming and you likely will want to run different Вeams nodes on different computers.
-    * For the sake of simplicity this exampe will use two different actor system running in a same program to simulate
-    * distributed system.
-    */
-  private def actorSystem(port: Int) = beams.akka.actorSystem(setup = ActorSystemSetup(BootstrapSetup(
-    ConfigFactory.defaultApplication().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port)))))
-
-  private val aliceNode = actorSystem(25520).flatMap(node(beam => new AliceEnv(beam.beam)).provide)
-  private val bobNode = actorSystem(25521).flatMap(node(beam => new BobEnv(beam.beam)).provide)
-
-  private def factorial(n: Int): Int = n match {
-    case 0 => 1
-    case _ => n * factorial(n - 1)
+  private val parser: OParser[Unit, Config] = {
+    val builder: OParserBuilder[Config] = OParser.builder[Config]
+    import builder._
+    OParser.sequence(
+      programName("hello-world"),
+      head("Beams hello-world example program", "0.1"),
+      opt[String]('k', "serviceKey")
+        .required()
+        .validate { k =>
+          if (Seq("Alice", "Bob", "Master").contains(k.capitalize)) {
+            Right(())
+          } else {
+            Left("Service key should be either Alice, Bob or Master.")
+          }
+        }.action((k, c) => c.copy(serviceKey = k.capitalize))
+        .text("Service key"))
   }
 
-  private def foo[N[+_]](x: Int) = for {
-    env <- ZIO.environment[NodeEnv[N]]
-    _ <- putStrLn(s"running foo at $env")
-  } yield x + 1
+  private def setup(port: Int) = ActorSystemSetup(
+    BootstrapSetup(ConfigFactory.load().withValue("akka.remote.artery.canonical.port", ConfigValueFactory.fromAnyRef(port))))
 
-  private def bar[N[+_]](x: Int, y: Int) = for {
-    env <- ZIO.environment[NodeEnv[N]]
-    _ <- putStrLn(s"running bar at $env")
-  } yield (x + y)
+  class NodeEnv(beam: Beam[AkkaBackend], val config: Config)
+    extends Beam.Wrapper[AkkaBackend](beam) with Console.Live
 
-  def program: TaskR[Environment, Unit] = (aliceNode <*> bobNode) use {
-    /**
-      * In this example direct references to Alice and Bob nodes available. In real distributed application such
-      * references should be discovered with [[beams.BeamsSyntax.nodeListing]] or [[beams.BeamsSyntax.someNodes]]
-      * and [[beams.BeamsSyntax.anyNode]] helper functions.
-      */
-    case (alice, bob) =>
+  private def master = for {
+    _ <- announce("Master")
+    alice <- anyNode[NodeEnv]("Alice")
+    _ <- at(alice) {
+      ZIO.access[NodeEnv](_.config.serviceKey).flatMap(key => putStrLn(s"running at $key"))
+    }
+    bob <- anyNode[NodeEnv]("Bob")
+    _ <- at(bob) {
+      ZIO.access[NodeEnv](_.config.serviceKey).flatMap(key => putStrLn(s"running at $key"))
+    }
+  } yield ()
 
-      /**
-        * Since Scala does not support val bindings as first statement in for expressions factorial calculated outside
-        * of for statement.
-        */
-      val x = factorial(6)
-      for {
-        /**
-          * Unlike Unison, Beams does not support stong code mobility. Hence it's not possibe to 'transfer' execution of
-          * current program to the remote node. But it possible to create closure which captures current execution state
-          * and submit it to remote node.
-          *
-          * You should be careful not to capture too much state or something which can not be serialized. Same rule
-          * applies to any distributed framework relying on closure serialization, such as Spark, for example.
-          *
-          * Please note, that [[beams.BeamsSyntax.submitTo]] will run remote process in fire-and-forget fashion.
-          * You will not be able to interrupt remote task nor obtain it's result. Use [[beams.BeamsSyntax.runAt]] for
-          * guided launch.
-          */
-        _ <- submitTo(alice) {
-          for {
-            y <- foo[NodeActor.Ref](x)
-            _ <- submitTo(bob) {
-              for {
-                res <- bar[NodeActor.Ref](x, y)
-                _ <- putStrLn(s"The result is $res")
-              } yield ()
-            }
-          } yield ()
-        }
+  private def slave = for {
+    master <- anyNode[NodeEnv]("Master")
+    _ <- ZIO.access[NodeEnv](_.config.serviceKey).flatMap(announce)
+    _ <- deathwatch(master)
+  } yield ()
 
-        /**
-          * Since we do not control submitted tasks and not having idea when them will terminate, main program should be
-          * terminated manually.
-          */
-        _ <- putStrLn("Press any key to exit...")
-        _ <- getStrLn
-      } yield ()
-  }
+  private def program(config: Config): Task[Unit] = for {
+    setup <- IO(setup(9000 + nodeNames.indexOf(config.serviceKey)))
+    result <- root(_.map(new NodeEnv(_, config)), setup = setup) {
+      if (config.serviceKey == "Master") {
+        master
+      } else {
+        slave
+      }
+    }
+  } yield result
 
-  override def run(args: List[String]): ZIO[Environment, Nothing, Int] =
-    program.foldM(error => putStrLn(error.toString) *> ZIO.succeed(1), _ => ZIO.succeed(0))
+  override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
+    IO(OParser.parse(parser, args, Config(""))).flatMap {
+      case Some(cfg) => program(cfg) *> ZIO.succeed(0)
+      case None => ZIO.succeed(1)
+    }.catchAll(error => IO.effectTotal(error.printStackTrace()) *> ZIO.succeed(1))
 }

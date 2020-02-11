@@ -1,7 +1,7 @@
-package beams.akka
+package beams.backend.akka
 
 import akka.actor.NoSerializationVerificationNeeded
-import scalaz.zio._
+import zio._
 
 /**
   * Base trait for all beams's messages.
