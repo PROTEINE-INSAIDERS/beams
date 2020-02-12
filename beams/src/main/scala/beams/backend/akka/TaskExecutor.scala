@@ -11,14 +11,14 @@ private abstract class TaskExecutor[R, A](runtime: Runtime[R], task: RIO[R, A], 
     case _: Command[_] => Behaviors.same // swallow all other messages
   }
 
-  protected def actorTerminatedException(actor: ActorRef[Nothing]): ActorTerminatedException =
+  protected final def actorTerminatedException(actor: ActorRef[Nothing]): ActorTerminatedException =
     ActorTerminatedException("Essential actor terminated before completing the task.", actor)
 
-  protected val behaviour: Behavior[Command[A]] = Behaviors.setup { ctx =>
+  protected final val behaviour: Behavior[Command[A]] = Behaviors.setup { ctx =>
     guardBehavior1(error) {
       deathWatches.foreach { actor => ctx.watchWith(actor, ActorTerminated(actor)) }
 
-      val taskFiber = runtime.unsafeRun(task.fork)
+      val taskFiber = runtime.unsafeRun(task.fork) // для локальной задачи не нужен механизм прерывания.
       runtime.unsafeRunAsync(taskFiber.join)(ctx.self ! Done(_))
 
       Behaviors.receiveMessagePartial {
@@ -67,7 +67,7 @@ private object TaskExecutor {
   /**
     * Interrupt the task. Send by waiting part.
     */
-  object Interrupt extends Command[Nothing] with SerializableMessage
+  object Interrupt extends Command[Nothing] with SerializableMessage //TODO: нам не нужно использовать механизм сообщений для прерывания локальных задач.
 
   /**
     * Execute interruptible task submitted by the remote node and reply to the {@param replyTo} actor.
@@ -78,11 +78,11 @@ private object TaskExecutor {
                    replyTo: TaskReplyToActor.Ref[A],
                    deathWatches: ActorRef[Nothing]*
                  ): Behavior[Command[A]] = new TaskExecutor[R, A](runtime, task, deathWatches) {
-    final override protected def done(r: Exit[Throwable, A]): Unit = replyTo ! TaskReplyToActor.Done(r)
+    override protected final def done(r: Exit[Throwable, A]): Unit = replyTo ! TaskReplyToActor.Done(r)
 
-    final override protected def error(e: Throwable): Unit = replyTo ! TaskReplyToActor.Done(Exit.fail(e))
+    override protected final def error(e: Throwable): Unit = replyTo ! TaskReplyToActor.Done(Exit.fail(e))
 
-    final override protected def terminated(actor: ActorRef[Nothing]): Unit = if (actor != replyTo) {
+    override protected final def terminated(actor: ActorRef[Nothing]): Unit = if (actor != replyTo) {
       replyTo ! TaskReplyToActor.Done(Exit.fail(actorTerminatedException(actor)))
     }
   }.behaviour
@@ -96,10 +96,10 @@ private object TaskExecutor {
                    cb: Task[A] => Unit,
                    deathWatches: ActorRef[Nothing]*
                  ): Behavior[Command[A]] = new TaskExecutor[R, A](runtime, task, deathWatches) {
-    override protected def done(r: Exit[Throwable, A]): Unit = cb(Task.done(r))
+    override protected final def done(r: Exit[Throwable, A]): Unit = cb(Task.done(r))
 
-    override protected def error(e: Throwable): Unit = cb(Task.fail(e))
+    override protected final def error(e: Throwable): Unit = cb(Task.fail(e))
 
-    override protected def terminated(actor: ActorRef[Nothing]): Unit = cb(Task.fail(actorTerminatedException(actor)))
+    override protected final def terminated(actor: ActorRef[Nothing]): Unit = cb(Task.fail(actorTerminatedException(actor)))
   }.behaviour
 }

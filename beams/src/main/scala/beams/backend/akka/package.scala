@@ -13,7 +13,7 @@ package object akka extends Beam.Syntax[AkkaBackend] {
   /**
     * Create root node and run task on it.
     */
-  def root[R, A](f: Runtime[AkkaBeam] => Runtime[R],
+  def root[R, A](f: Runtime[Beam[AkkaBackend]] => Runtime[R],
                  name: String = "beams",
                  setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
                  props: Props = Props.empty
@@ -21,7 +21,13 @@ package object akka extends Beam.Syntax[AkkaBackend] {
     IO(ActorSystem(NodeActor(f), name, setup, props)).bracket {
       system => IO.effectTotal(system ! NodeActor.Stop)
     } { system =>
-      AkkaBeam(system, system).execution.at(system)(task)
+      for {
+        interrupt <- Promise.make[Nothing, Any]
+        result <- guardAsyncInterrupt[A] { (cb: Task[A] => Unit) =>
+          system ! NodeActor.ExecLocal[R, A](task, cb, interrupt)
+          Left(interrupt.succeed(()))
+        }
+      } yield result
     }
 
   @inline

@@ -3,11 +3,15 @@ package beams.backend.akka
 import akka.actor.typed._
 import beams._
 import zio._
-import zio.duration.Duration
+import zio.clock._
+import zio.console._
+import zio.duration._
 
-import scala.concurrent.duration._
 
-private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any], system: ActorSystem[_])
+private[akka] final case class AkkaBeam(
+                                         nodeActor: NodeActor.Ref[Any],
+                                         ctx: ActorSystem[_]
+                                       )
   extends Deathwatch[AkkaBackend]
     with Discovery[AkkaBackend]
     with Exclusive[AkkaBackend]
@@ -30,15 +34,15 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any], system: A
 
   override def discovery: Discovery.Service[Any, AkkaBackend] = new Discovery.Service[Any, AkkaBackend] {
     /**
-     * Make current node discoverable by given key.
-     */
+      * Make current node discoverable by given key.
+      */
     override def announce(key: String): RIO[Any, Unit] = guardAsync { cb =>
       nodeActor ! NodeActor.Register(key, cb)
     }
 
     /**
-     * List available nodes by given key.
-     */
+      * List available nodes by given key.
+      */
     override def listing[U](key: String): RManaged[Any, Queue[Set[NodeActor.Ref[U]]]] =
       Managed.make {
         for {
@@ -80,18 +84,5 @@ private[akka] final case class AkkaBeam(nodeActor: NodeActor.Ref[Any], system: A
         case None => exclusiveFiber.interrupt *> Task.succeed(None)
       }
     } yield result
-  }
-}
-
-object Test {
-  def main(args: Array[String]): Unit = {
-    val rt = new DefaultRuntime {}
-    val pr = for {
-      p <- Promise.make[Throwable, Boolean]
-      _ <- IO(println("test")).fork
-      _ <- ZIO.sleep(Duration(10, SECONDS))
-    } yield ()
-
-    rt.unsafeRun(pr)
   }
 }

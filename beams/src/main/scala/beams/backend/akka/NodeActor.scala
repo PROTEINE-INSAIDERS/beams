@@ -21,7 +21,15 @@ object NodeActor {
 
   private[akka] final case class Exec[R, A](task: RIO[R, A], replyTo: TaskReplyToActor.Ref[A]) extends Command[R] with SerializableMessage
 
+  private[akka] final case class ExecLocal[R, A](
+                                                  task: RIO[R, A],
+                                                  cb: Task[A] => Unit,
+                                                  interrupt: Promise[Nothing, Any]
+                                                ) extends Command[R] with NonSerializableMessage
+
   private[akka] final case class Register(key: String, cb: Task[Unit] => Unit) extends Command[Any] with NonSerializableMessage
+
+  private[akka] final case class Run(runnable: Runnable) extends Command[Any] with NonSerializableMessage
 
   private[akka] final case class Spawn[T](behavior: Behavior[T], cb: Task[ActorRef[T]] => Unit)
     extends Command[Any] with NonSerializableMessage
@@ -32,30 +40,35 @@ object NodeActor {
     val runtime = f(Runtime(AkkaBeam(ctx.self, ctx.system), PlatformLive.fromExecutionContext(ctx.executionContext)))
     Behaviors.receiveMessagePartial {
       case Exclusive(key, cb) => guardBehavior(cb, Behaviors.same[Command[R]]) {
-        // TODO:
-        // 1. получить ExclusiveActor
-        // 2. зарегистрировать задачу
-        // 3. запустить задачу
-        // 4. наблюдать ExclusiveActor, если он сдохнет, прервать задачу.
-
-
         val clusterSingleton = ClusterSingleton(ctx.system)
-        val exclusive = clusterSingleton.init(SingletonActor(ExclusiveActor(), "beams-exclusive"))
+        val exclusive = clusterSingleton.init(SingletonActor(ExclusiveActor(), "beams-exclusive")) //TODO: придумать, как его выключать.
         val replyTo = ctx.spawnAnonymous(ReplyToActor(exclusive, { t: Task[Boolean] => ??? })) //TODO: should we watch replyTo?
+
         exclusive ! ExclusiveActor.Register(key, replyTo)
+
         Behaviors.same
-
-
       }
       case Exec(task, replyTo) =>
         val taskActor = ctx.spawnAnonymous(TaskExecutor(runtime, task, replyTo, replyTo))
         replyTo ! TaskReplyToActor.Register(taskActor)
         Behaviors.same
+      case ExecLocal(task, cb, interrupt) => guardBehavior(cb) {
+        val wrapper = for {
+          fiber <- task.fork
+          _ <- (interrupt.await *> fiber.interrupt).fork
+          result <- fiber.join
+        } yield result
+        runtime.unsafeRunAsync(task)(k => cb(Task.done(k)))
+        Behaviors.same
+      }
       case Register(key, cb) => guardBehavior(cb, Behaviors.same[Command[R]]) {
         val replyTo = ctx.spawnAnonymous(ReplyToActor(ctx.system.receptionist, { t: Task[Registered] => cb(t *> Task.unit) }))
         ctx.system.receptionist ! Receptionist.Register(ServiceKey[NodeActor.Command[R]](key), ctx.self, replyTo)
         Behaviors.same
       }
+      case Run(runnable) =>
+        runnable.run()
+        Behaviors.same
       case Spawn(behavior, cb) => guardBehavior(cb, Behaviors.same[Command[R]]) {
         cb(Task.succeed(ctx.spawnAnonymous(behavior)))
         Behaviors.same
