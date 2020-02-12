@@ -11,8 +11,8 @@ import scala.util.control.NonFatal
 
 package object akka extends Beam.Syntax[AkkaBackend] {
   /**
-   * Create root node and run task on it.
-   */
+    * Create root node and run task on it.
+    */
   def root[R, A](f: Runtime[AkkaBeam] => Runtime[R],
                  name: String = "beams",
                  setup: ActorSystemSetup = ActorSystemSetup.create(BootstrapSetup()),
@@ -48,13 +48,27 @@ package object akka extends Beam.Syntax[AkkaBackend] {
 
   @inline
   @specialized
-  private[akka] def guardBehavior[T](cb: Task[Nothing] => Unit, onError: Behavior[T] = Behaviors.stopped[T])(behavior: => Behavior[T]): Behavior[T] = {
+  private[akka] def guardBehavior[T](errorCb: Task[Nothing] => Unit, errorBehavior: Behavior[T] = Behaviors.stopped[T])
+                                    (behavior: => Behavior[T]): Behavior[T] = {
     try {
       behavior
     } catch {
       case NonFatal(e) =>
-        cb(Task.fail(e))
-        onError
+        errorCb(Task.fail(e))
+        errorBehavior
+    }
+  }
+
+  @inline
+  @specialized
+  private[akka] def guardBehavior1[T](errorCb: Throwable => Unit, errorBehavior: Behavior[T] = Behaviors.stopped[T])
+                                     (behavior: => Behavior[T]): Behavior[T] = {
+    try {
+      behavior
+    } catch {
+      case NonFatal(e) =>
+        errorCb(e)
+        errorBehavior
     }
   }
 }

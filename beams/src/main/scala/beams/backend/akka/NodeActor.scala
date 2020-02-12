@@ -41,14 +41,14 @@ object NodeActor {
 
         val clusterSingleton = ClusterSingleton(ctx.system)
         val exclusive = clusterSingleton.init(SingletonActor(ExclusiveActor(), "beams-exclusive"))
-        val replyTo = ctx.spawnAnonymous(ReplyToActor(exclusive, { t: Task[Boolean] => ??? } )) //TODO: should we watch replyTo?
+        val replyTo = ctx.spawnAnonymous(ReplyToActor(exclusive, { t: Task[Boolean] => ??? })) //TODO: should we watch replyTo?
         exclusive ! ExclusiveActor.Register(key, replyTo)
         Behaviors.same
 
 
       }
       case Exec(task, replyTo) =>
-        val taskActor = ctx.spawnAnonymous(TaskActor(runtime, task, replyTo, replyTo))
+        val taskActor = ctx.spawnAnonymous(TaskExecutor(runtime, task, replyTo, replyTo))
         replyTo ! TaskReplyToActor.Register(taskActor)
         Behaviors.same
       case Register(key, cb) => guardBehavior(cb, Behaviors.same[Command[R]]) {

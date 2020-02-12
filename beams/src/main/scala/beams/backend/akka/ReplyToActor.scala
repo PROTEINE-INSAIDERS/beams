@@ -8,11 +8,11 @@ import scala.reflect._
 
 private[akka] object ReplyToActor {
 
-  trait Command[+A]
+  private sealed trait Command[+A]
 
-  final case class Done[A](a: A) extends Command[A] with SerializableMessage
+  private final case class Done[A](a: A) extends Command[A] with SerializableMessage
 
-  object Terminated extends Command[Nothing] with SerializableMessage
+  private object Terminated extends Command[Nothing] with SerializableMessage
 
   def apply[A: ClassTag](actor: ActorRef[Nothing], cb: Task[A] => Unit): Behavior[A] = Behaviors.setup[Command[A]] { ctx =>
     guardBehavior(cb) {
