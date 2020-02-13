@@ -37,6 +37,11 @@ private[akka] object TaskReplyToActor {
    */
   object ExecutorTerminated extends Command[Nothing] with SerializableMessage
 
+  /**
+    * Just stop the actor (send in case of error before starting any tasks).
+    */
+  object Stop extends Command[Nothing] with NonSerializableMessage
+
   //TODO: тут можно поставить try-catch защиту с перенаправлением ошибок в cb
   def apply[A](executor: NodeActor.Ref[Any], cb: Task[A] => Unit): Behavior[Command[A]] = Behaviors.setup { ctx =>
     guardBehavior(cb) {
@@ -96,6 +101,9 @@ private[akka] object TaskReplyToActor {
 
         case ExecutorTerminated => // Executor terminated before receiving task actor reference. Executor actor likely terminated, propagate error and stop.
           cb(Task.fail(ActorTerminatedException("Executor actor terminated.", executor)))
+          Behaviors.stopped
+
+        case Stop =>
           Behaviors.stopped
       }
     }

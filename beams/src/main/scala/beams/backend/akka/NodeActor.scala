@@ -1,10 +1,9 @@
 package beams.backend.akka
 
 import akka.actor.typed._
-import akka.actor.typed.receptionist.Receptionist.Registered
 import akka.actor.typed.receptionist._
 import akka.actor.typed.scaladsl._
-import akka.cluster.typed._
+import beams.Beam
 import zio._
 import zio.internal.PlatformLive
 
@@ -17,8 +16,6 @@ object NodeActor {
 
   private[akka] sealed trait Command[-R]
 
-  private[akka] final case class Exclusive(key: String, cb: Task[Option[ExclusiveActor.Ref]] => Unit) extends Command[Any] with NonSerializableMessage
-
   private[akka] final case class Exec[R, A](task: RIO[R, A], replyTo: TaskReplyToActor.Ref[A]) extends Command[R] with SerializableMessage
 
   private[akka] final case class ExecLocal[R, A](
@@ -27,27 +24,13 @@ object NodeActor {
                                                   interrupt: Promise[Nothing, Any]
                                                 ) extends Command[R] with NonSerializableMessage
 
-  private[akka] final case class Register(key: String, cb: Task[Unit] => Unit) extends Command[Any] with NonSerializableMessage
-
   private[akka] final case class Run(runnable: Runnable) extends Command[Any] with NonSerializableMessage
-
-  private[akka] final case class Spawn[T](behavior: Behavior[T], cb: Task[ActorRef[T]] => Unit)
-    extends Command[Any] with NonSerializableMessage
 
   private[akka] object Stop extends Command[Any] with NonSerializableMessage
 
-  private[akka] def apply[R](f: Runtime[AkkaBeam] => Runtime[R]): Behavior[Command[R]] = Behaviors.setup { ctx =>
-    val runtime = f(Runtime(AkkaBeam(ctx.self, ctx.system), PlatformLive.fromExecutionContext(ctx.executionContext)))
+  private[akka] def apply[R](f: Runtime[Beam[AkkaBackend]] => Runtime[R]): Behavior[Command[R]] = Behaviors.setup { ctx =>
+    val runtime = f(Runtime(AkkaBeam()(ctx, new NodeExecutionContext(ctx.self)), PlatformLive.fromExecutionContext(ctx.executionContext)))
     Behaviors.receiveMessagePartial {
-      case Exclusive(key, cb) => guardBehavior(cb, Behaviors.same[Command[R]]) {
-        val clusterSingleton = ClusterSingleton(ctx.system)
-        val exclusive = clusterSingleton.init(SingletonActor(ExclusiveActor(), "beams-exclusive")) //TODO: придумать, как его выключать.
-        val replyTo = ctx.spawnAnonymous(ReplyToActor(exclusive, { t: Task[Boolean] => ??? })) //TODO: should we watch replyTo?
-
-        exclusive ! ExclusiveActor.Register(key, replyTo)
-
-        Behaviors.same
-      }
       case Exec(task, replyTo) =>
         val taskActor = ctx.spawnAnonymous(TaskExecutor(runtime, task, replyTo, replyTo))
         replyTo ! TaskReplyToActor.Register(taskActor)
@@ -58,21 +41,12 @@ object NodeActor {
           _ <- (interrupt.await *> fiber.interrupt).fork
           result <- fiber.join
         } yield result
-        runtime.unsafeRunAsync(task)(k => cb(Task.done(k)))
-        Behaviors.same
-      }
-      case Register(key, cb) => guardBehavior(cb, Behaviors.same[Command[R]]) {
-        val replyTo = ctx.spawnAnonymous(ReplyToActor(ctx.system.receptionist, { t: Task[Registered] => cb(t *> Task.unit) }))
-        ctx.system.receptionist ! Receptionist.Register(ServiceKey[NodeActor.Command[R]](key), ctx.self, replyTo)
+        runtime.unsafeRunAsync(wrapper)(k => cb(Task.done(k)))
         Behaviors.same
       }
       case Run(runnable) =>
         runnable.run()
         Behaviors.same
-      case Spawn(behavior, cb) => guardBehavior(cb, Behaviors.same[Command[R]]) {
-        cb(Task.succeed(ctx.spawnAnonymous(behavior)))
-        Behaviors.same
-      }
       case Stop =>
         Behaviors.stopped
     }

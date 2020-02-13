@@ -7,24 +7,26 @@ import zio._
 
 import scala.reflect._
 
-private abstract class ReplyToActor[A: ClassTag](actor: ActorRef[Nothing]) {
+private abstract class ReplyToActor[A](actor: ActorRef[Nothing]) {
   protected final def actorTerminatedException: ActorTerminatedException =
     ActorTerminatedException(s"Actor $actor terminated before sending response.", actor)
 
-  protected final val behavior: Behavior[A] = Behaviors.setup[Command[A]] { ctx =>
+  protected final val behavior: Behavior[Any] = Behaviors.setup[Any] { ctx =>
     guardBehavior1(error) {
       ctx.watchWith(actor, Terminated)
       Behaviors.receiveMessagePartial {
-        case Done(a) =>
-          done(a)
-          ctx.unwatch(actor)
+        case Stop =>
           Behaviors.stopped
         case Terminated =>
           terminated()
           Behaviors.stopped
+        case a =>
+          done(a.asInstanceOf[A])
+          ctx.unwatch(actor)
+          Behaviors.stopped
       }
     }
-  }.transformMessages { case a => Done(a) }
+  }
 
   protected def done(a: A)
 
@@ -35,13 +37,13 @@ private abstract class ReplyToActor[A: ClassTag](actor: ActorRef[Nothing]) {
 
 private object ReplyToActor {
 
-  private sealed trait Command[+A]
+  sealed trait Command[+A]
 
-  private final case class Done[A](a: A) extends Command[A] with SerializableMessage
+  object Stop extends Command[Nothing] with SerializableMessage
 
   private object Terminated extends Command[Nothing] with SerializableMessage
 
-  def apply[A: ClassTag](actor: ActorRef[Nothing], cb: Task[A] => Unit): Behavior[A] = new ReplyToActor[A](actor) {
+  def apply[A: ClassTag](actor: ActorRef[Nothing], cb: Task[A] => Unit): Behavior[Any] = new ReplyToActor[A](actor) {
     final override protected def done(a: A): Unit = cb(Task.succeed(a))
 
     final override protected def error(e: Throwable): Unit = cb(Task.fail(e))

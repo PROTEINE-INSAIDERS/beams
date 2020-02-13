@@ -7,9 +7,34 @@ import _root_.akka.actor.typed.scaladsl._
 import beams._
 import zio._
 
+import scala.concurrent.ExecutionContext
+import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
 package object akka extends Beam.Syntax[AkkaBackend] {
+
+  private[akka] implicit final class Askable[Req](val recipient: ActorRef[Req]) extends AnyVal {
+    def ask[Res](
+                  replyTo: ActorRef[Res] => Req
+                )
+                (
+                  implicit actorContext: ActorContext[_],
+                  executionContext: ExecutionContext,
+                  tag: ClassTag[Res]
+                ): Task[Res] =
+      guardAsyncInterrupt { (cb: Task[Res] => Unit) =>
+        val replyToActor = actorContext.spawnAnonymous(ReplyToActor(recipient, cb))
+        try {
+          recipient ! replyTo(replyToActor)
+          Left(Task.effectTotal(replyToActor ! ReplyToActor.Stop))
+        } catch {
+          case NonFatal(e) =>
+            replyToActor ! ReplyToActor.Stop
+            throw e
+        }
+      }.on(executionContext)
+  }
+
   /**
     * Create root node and run task on it.
     */

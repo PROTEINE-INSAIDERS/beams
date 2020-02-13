@@ -6,21 +6,30 @@ import zio._
 object MasterSlave {
 
   trait Syntax[X <: Backend] {
-    final def masterSlave[A](
-                              masterName: String = "master",
-                              slaveName: String = "slave"
-                            )
-                            (
-                              task: Task[A] // надо ему хотя бы beams передать..
-                            ): RIO[Execution[X], A] = {
-      // TODO:
-      // 1. Выбирается и запускается master процесс.
-      // 2. Мастер публикует себя.
-      // 3. Рабы обнаруживают мастера.
-      // 4. Рабы публикуют себя.
-      // 5. Рабы начинают ждать мастера.
-      ???
-    }
+
+    private object X extends Beam.Syntax[X]
+
+    import X._
+
+    final def masterSlave[A,
+      R <: Deathwatch[X] with Discovery[X] with Exclusive[X]](
+                                                               masterName: String = "master",
+                                                               slaveName: String = "slave"
+                                                             )
+                                                             (
+                                                               main: RIO[R, A]
+                                                             ): RIO[R, Option[A]] =
+      exclusive(masterName) {
+        announce(masterName) *> main
+      }.tap { r =>
+        ZIO.when(r.isEmpty) {
+          for {
+            master <- anyNode[R]("master")
+            _ <- announce(slaveName)
+            _ <- deathwatch(master)
+          } yield ()
+        }
+      }
   }
 
 }

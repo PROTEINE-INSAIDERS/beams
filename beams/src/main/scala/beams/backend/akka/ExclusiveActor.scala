@@ -12,22 +12,21 @@ private[akka] object ExclusiveActor {
 
   final case class Register(key: String, replyTo: ActorRef[Boolean]) extends Command with SerializableMessage
 
-  final case class Unregister(key: String, replyTo: ActorRef[Unit]) extends Command with SerializableMessage
+  final case class Unregister(key: String) extends Command with SerializableMessage
 
   /**
    * Singleton actor which coordinates exclusive execution. Since this actor not bound to particular node, it only
    * used to register and unregister exclusive task keys.
    */
-  def apply[A](): Behavior[Command] = Behaviors.setup { ctx =>
+  def apply[A](): Behavior[Command] = Behaviors.setup { _ =>
     val exclusives = new mutable.HashSet[String]()
 
     Behaviors.receiveMessagePartial {
       case Register(key, replyTo) =>
         replyTo ! exclusives.add(key)
         Behaviors.same
-      case Unregister(key, replyTo) =>
+      case Unregister(key) =>
         exclusives.remove(key)
-        replyTo ! ()
         Behaviors.same
     }
   }

@@ -4,7 +4,7 @@ import akka.actor.typed._
 import akka.actor.typed.scaladsl._
 import zio._
 
-private[akka] object DeathWatch {
+private object DeathWatch {
 
   trait Command
 
